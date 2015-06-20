@@ -10,9 +10,7 @@ static const struct wl_interface *types[] = {
 	&wl_output_interface,
 	NULL,
 	NULL,
-	NULL,
 	&wl_output_interface,
-	NULL,
 	NULL,
 	&wl_output_interface,
 	NULL,
@@ -25,9 +23,9 @@ static const struct wl_message wl_eom_requests[] = {
 };
 
 static const struct wl_message wl_eom_events[] = {
-	{ "output_type", "ouuu", types + 2 },
-	{ "output_mode", "ouu", types + 6 },
-	{ "output_attribute", "ouuu", types + 9 },
+	{ "output_type", "ouu", types + 2 },
+	{ "output_mode", "ou", types + 5 },
+	{ "output_attribute", "ouuu", types + 7 },
 };
 
 WL_EXPORT const struct wl_interface wl_eom_interface = {

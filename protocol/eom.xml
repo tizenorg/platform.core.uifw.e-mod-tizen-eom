@@ -81,13 +81,11 @@
       <arg name="output" type="object" interface="wl_output"/>
       <arg name="type" type="uint"/>
       <arg name="status" type="uint"/>
-      <arg name="error" type="uint"/>
     </event>
 
     <event name="output_mode">
       <arg name="output" type="object" interface="wl_output"/>
       <arg name="mode" type="uint"/>
-      <arg name="error" type="uint"/>
     </event>
 
     <event name="output_attribute">
