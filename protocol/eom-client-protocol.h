@@ -157,25 +157,21 @@ struct wl_eom_listener {
 	 * @output: (none)
 	 * @type: (none)
 	 * @status: (none)
-	 * @error: (none)
 	 */
 	void (*output_type)(void *data,
 			    struct wl_eom *wl_eom,
 			    struct wl_output *output,
 			    uint32_t type,
-			    uint32_t status,
-			    uint32_t error);
+			    uint32_t status);
 	/**
 	 * output_mode - (none)
 	 * @output: (none)
 	 * @mode: (none)
-	 * @error: (none)
 	 */
 	void (*output_mode)(void *data,
 			    struct wl_eom *wl_eom,
 			    struct wl_output *output,
-			    uint32_t mode,
-			    uint32_t error);
+			    uint32_t mode);
 	/**
 	 * output_attribute - (none)
 	 * @output: (none)
