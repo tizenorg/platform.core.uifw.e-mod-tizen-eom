@@ -6,7 +6,7 @@ filesdir = $(libdir)/enlightenment/modules/$(MODULE)
 
 pkgdir                 = $(libdir)/enlightenment/modules/$(MODULE)/$(MODULE_ARCH)
 pkg_LTLIBRARIES        = module.la
-module_la_SOURCES      = e_mod_main.c
+module_la_SOURCES      = e_mod_main.c eom-protocol.c
 module_la_LIBADD       =
 module_la_CFLAGS       = @WAYLAND_CFLAGS@ @ENLIGHTENMENT_CFLAGS@ -DHAVE_WAYLAND_ONLY
 module_la_LDFLAGS      = -module -avoid-version @WAYLAND_LIBS@ @ENLIGHTENMENT_LIBS@
