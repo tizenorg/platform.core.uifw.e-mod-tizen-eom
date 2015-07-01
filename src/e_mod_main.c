@@ -149,7 +149,9 @@ static const struct wl_eom_interface _e_eom_wl_implementation = {
 static void
 _e_eom_wl_resource_destory_cb(struct wl_resource *resource)
 {
-   wl_resource_destroy(resource);
+
+/* TODO : destroy resources if exist */
+
 }
 
 /* wl_eom global object bind function */
