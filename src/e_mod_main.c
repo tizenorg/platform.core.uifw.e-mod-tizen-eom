@@ -43,8 +43,6 @@ _e_eom_e_client_remove_cb(void *data, int type, void *event)
    (void) event;
    (void) data;
 
-   EOM_DBG("e_client: %p is died\n", ec);
-
    return ECORE_CALLBACK_PASS_ON;
 }
 
