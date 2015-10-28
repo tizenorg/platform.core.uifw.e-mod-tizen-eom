@@ -6,6 +6,8 @@ filesdir = $(libdir)/enlightenment/modules/$(MODULE)
 
 pkgdir                 = $(libdir)/enlightenment/modules/$(MODULE)/$(MODULE_ARCH)
 pkg_LTLIBRARIES        = module.la
+
+if WAYLAND_ONLY
 module_la_SOURCES      = e_mod_main.c eom-protocol.c
 module_la_LIBADD       =
 module_la_CFLAGS       = @WAYLAND_CFLAGS@ @ENLIGHTENMENT_CFLAGS@ -DHAVE_WAYLAND_ONLY
@@ -26,3 +28,9 @@ CLEANFILES = $(BUILT_SOURCES)
 
 %-client-protocol.h : $(top_srcdir)/protocol/%.xml
 	$(AM_V_GEN)$(MKDIR_P) $(dir $@) && $(wayland_scanner) client-header < $< > $@
+else
+module_la_SOURCES      = e_mod_main_x11.c 
+module_la_LIBADD       =
+module_la_CFLAGS       = @ENLIGHTENMENT_CFLAGS@
+module_la_LDFLAGS      = -module -avoid-version @ENLIGHTENMENT_LIBS@
+endif

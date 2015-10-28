@@ -37,6 +37,27 @@ PKG_CHECK_MODULES(WAYLAND_SCANNER, wayland-scanner)
 PKG_CHECK_MODULES(WAYLAND, [wayland-server])
 PKG_CHECK_MODULES(ENLIGHTENMENT, [enlightenment])
 
+dnl ========================================================================
+# checks for wayland only argument
+dnl ========================================================================
+have_wayland_only=no
+AC_ARG_ENABLE([wayland-only],
+  AS_HELP_STRING([--enable-wayland-only],[enable wayland-only version of enlightenment @<:@default=disabled@:>@]),
+  [have_wayland_only=$enableval],
+  [have_wayland_only=no])
+AC_MSG_CHECKING([whether wayland-only version is enabled])
+AM_CONDITIONAL(WAYLAND_ONLY, test x$have_wayland_only = xyes)
+if test "x${have_wayland_only}" != "xno"; then
+  AC_DEFINE_UNQUOTED([HAVE_WAYLAND_ONLY],[1],[enable wayland-only version of enlightenment])
+fi
+
+dnl ========================================================================
+# checks for wayland only argument
+dnl ========================================================================
+if test "x${have_wayland_only}" = "xyes"; then
+  PKG_CHECK_MODULES(WAYLAND, [wayland-server])
+fi
+
 AC_SUBST(ENLIGHTENMENT_CFLAGS)
 AC_SUBST(ENLIGHTENMENT_LIBS)
 
