@@ -12,6 +12,7 @@ License: BSD-2-Clause
 BuildRequires: pkgconfig(enlightenment)
 BuildRequires:  gettext
 %if %{with x}
+BuildRequires:  pkgconfig(x11)
 %endif
 %if %{with wayland}
 BuildRequires:  pkgconfig(wayland-server)
@@ -35,7 +36,7 @@ export LDFLAGS+=" -Wl,--hash-style=both -Wl,--as-needed -Wl,--rpath=/usr/lib"
 
 %autogen
 %if %{with wayland}
-%configure --prefix=/usr
+%configure --prefix=/usr --enable-wayland-only
 %else
 %configure --prefix=/usr
 %endif
