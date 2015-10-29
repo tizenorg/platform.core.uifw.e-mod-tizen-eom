@@ -12,6 +12,7 @@ License: BSD-2-Clause
 BuildRequires: pkgconfig(enlightenment)
 BuildRequires:  gettext
 %if %{with x}
+ExclusiveArch:
 %endif
 %if %{with wayland}
 BuildRequires:  pkgconfig(wayland-server)
