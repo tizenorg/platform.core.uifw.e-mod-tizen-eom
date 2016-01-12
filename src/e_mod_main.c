@@ -8,7 +8,6 @@ typedef struct _E_Eom E_Eom, *E_EomPtr;
 
 struct _E_Eom
 {
-   E_Comp_Data *cdata;
    struct wl_global *global;
    struct wl_resource *resource;
    Eina_List *handlers;
@@ -16,7 +15,7 @@ struct _E_Eom
 
 E_EomPtr g_eom = NULL;
 
-EAPI E_Module_Api e_modapi = { E_MODULE_API_VERSION, "EOM Module" };
+E_API E_Module_Api e_modapi = { E_MODULE_API_VERSION, "EOM Module" };
 
 static E_Comp_Wl_Output *
 _e_eom_e_comp_wl_output_get(Eina_List *outputs, const char *id)
@@ -38,7 +37,6 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
 {
    Ecore_Drm_Event_Output *e;
    E_EomPtr eom = data;
-   E_Comp_Data *cdata;
    E_Comp_Wl_Output *output;
    Eina_List *l2;
    struct wl_resource *output_resource;
@@ -52,12 +50,10 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
    EOM_DBG("id:%d (x,y,w,h):(%d,%d,%d,%d) (w_mm,h_mm):(%d,%d) refresh:%d subpixel_order:%d transform:%d make:%s model:%s plug:%d\n",
            e->id, e->x, e->y, e->w, e->h, e->phys_width, e->phys_height, e->refresh, e->subpixel_order, e->transform, e->make, e->model, e->plug);
 
-   if (!(cdata = e_comp->wl_comp_data)) goto end;
-
    snprintf(buff, sizeof(buff), "%d", e->id);
 
    /* get the e_comp_wl_output */
-   output = _e_eom_e_comp_wl_output_get(cdata->outputs, buff);
+   output = _e_eom_e_comp_wl_output_get(e_comp_wl->outputs, buff);
    if (!output)
      {
         EOM_ERR("no e_comp_wl_outputs.\n");
@@ -188,18 +184,12 @@ _e_eom_deinit()
 static Eina_Bool
 _e_eom_init()
 {
-   E_Comp_Data *cdata = NULL;
-
-   EINA_SAFETY_ON_NULL_GOTO(e_comp, err);
-
-   cdata = e_comp->wl_comp_data;
-   EINA_SAFETY_ON_NULL_GOTO(cdata, err);
+   EINA_SAFETY_ON_NULL_GOTO(e_comp_wl, err);
 
    g_eom = E_NEW(E_Eom, 1);
    EINA_SAFETY_ON_NULL_RETURN_VAL(g_eom, NULL);
 
-   g_eom->cdata = cdata;
-   g_eom->global = wl_global_create(cdata->wl.disp,
+   g_eom->global = wl_global_create(e_comp_wl->wl.disp,
                                     &wl_eom_interface,
                                     1,
                                     g_eom,
@@ -216,20 +206,20 @@ err:
    return EINA_FALSE;
 }
 
-EAPI void *
+E_API void *
 e_modapi_init(E_Module *m)
 {
    return (_e_eom_init() ? m : NULL);
 }
 
-EAPI int
+E_API int
 e_modapi_shutdown(E_Module *m EINA_UNUSED)
 {
    _e_eom_deinit();
    return 1;
 }
 
-EAPI int
+E_API int
 e_modapi_save(E_Module *m EINA_UNUSED)
 {
    /* Save something to be kept */
