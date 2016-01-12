@@ -11,9 +11,9 @@
 #define EOM_DBG(msg, ARG...) DBG("[eom module][%s:%d] "msg, __FUNCTION__, __LINE__, ##ARG)
 
 /* E Module */
-EAPI extern E_Module_Api e_modapi;
-EAPI void *e_modapi_init(E_Module *m);
-EAPI int   e_modapi_shutdown(E_Module *m);
-EAPI int   e_modapi_save(E_Module *m);
+E_API extern E_Module_Api e_modapi;
+E_API void *e_modapi_init(E_Module *m);
+E_API int   e_modapi_shutdown(E_Module *m);
+E_API int   e_modapi_save(E_Module *m);
 
 #endif
