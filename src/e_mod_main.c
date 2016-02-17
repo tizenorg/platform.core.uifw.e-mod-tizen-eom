@@ -25,8 +25,20 @@ _e_eom_e_comp_wl_output_get(Eina_List *outputs, const char *id)
 
    EINA_LIST_FOREACH(outputs, l, output)
      {
-        if (!strcmp(output->id, id))
-          return output;
+        char *temp_id = NULL;
+        temp_id = strchr(output->id, '/');
+        if (temp_id == NULL)
+          {
+             if (!strcmp(output->id, id))
+               return output;
+          }
+        else
+          {
+             int loc = temp_id - output->id;
+
+             if (!strncmp(output->id, id, loc))
+               return output;
+          }
      }
 
    return NULL;
@@ -47,16 +59,16 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
 
    if (!e->plug) goto end;
 
-   EOM_DBG("id:%d (x,y,w,h):(%d,%d,%d,%d) (w_mm,h_mm):(%d,%d) refresh:%d subpixel_order:%d transform:%d make:%s model:%s plug:%d\n",
-           e->id, e->x, e->y, e->w, e->h, e->phys_width, e->phys_height, e->refresh, e->subpixel_order, e->transform, e->make, e->model, e->plug);
+   EOM_DBG("id:%d (x,y,w,h):(%d,%d,%d,%d) (w_mm,h_mm):(%d,%d) refresh:%d subpixel_order:%d transform:%d make:%s model:%s name:%s plug:%d\n",
+           e->id, e->x, e->y, e->w, e->h, e->phys_width, e->phys_height, e->refresh, e->subpixel_order, e->transform, e->make, e->model, e->name, e->plug);
 
-   snprintf(buff, sizeof(buff), "%d", e->id);
+   snprintf(buff, sizeof(buff), "%s", e->name);
 
    /* get the e_comp_wl_output */
    output = _e_eom_e_comp_wl_output_get(e_comp_wl->outputs, buff);
    if (!output)
      {
-        EOM_ERR("no e_comp_wl_outputs.\n");
+        EOM_ERR("no e_comp_wl_outputs. (%s)\n", buff);
         goto end;
      }
 
@@ -90,9 +102,13 @@ _e_eom_ecore_drm_activate_cb(void *data, int type EINA_UNUSED, void *event)
    Ecore_Drm_Event_Activate *e = NULL;
    E_EomPtr eom = NULL;
 
+   EOM_DBG("_e_eom_ecore_drm_activate_cb called\n");
+
    if ((!event) || (!data)) goto end;
    e = event;
-   data = eom;
+   eom = data;
+
+   EOM_DBG("e->active:%d\n", e->active);
 
    if (e->active)
      {
