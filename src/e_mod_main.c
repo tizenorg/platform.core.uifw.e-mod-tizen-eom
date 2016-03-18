@@ -4,6 +4,9 @@
 #include "eom-server-protocol.h"
 #include "Ecore_Drm.h"
 
+#include <tbm_bufmgr.h>
+#include <tbm_surface.h>
+
 typedef struct _E_Eom E_Eom, *E_EomPtr;
 
 struct _E_Eom
@@ -16,6 +19,8 @@ struct _E_Eom
 E_EomPtr g_eom = NULL;
 
 E_API E_Module_Api e_modapi = { E_MODULE_API_VERSION, "EOM Module" };
+
+static E_Client_Hook *fullscreen_pre_hook = NULL;
 
 static E_Comp_Wl_Output *
 _e_eom_e_comp_wl_output_get(Eina_List *outputs, const char *id)
@@ -94,6 +99,81 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
 
 end:
    return ECORE_CALLBACK_PASS_ON;
+}
+
+void
+_e_eom_set_output(Ecore_Drm_Output * drm_output, tbm_surface_h surface)
+{
+	/* TODO: chack save and commit*/
+}
+
+static Ecore_Drm_Output *
+_e_eom_get_drm_output_for_client(E_Client *ec)
+{
+    Ecore_Drm_Output *drm_output;
+    Ecore_Drm_Device *dev;
+    Eina_List *l;
+
+    /* TODO: get real output, now we just return HDMI */
+    EINA_LIST_FOREACH(ecore_drm_devices_get(), l, dev)
+      {
+          drm_output = ecore_drm_device_output_name_find(dev, "HDMI-A-0");
+          if (drm_output)
+              return drm_output;
+      }
+    return NULL;
+}
+
+static tbm_surface_h
+_e_eom_get_tbm_surface_for_client(E_Client *ec)
+{
+    E_Pixmap *pixmap = ec->pixmap;
+    E_Comp_Wl_Buffer *buffer = e_pixmap_resource_get(pixmap);
+    tbm_surface_h tsurface = NULL;
+    E_Comp_Wl_Data *wl_comp_data = (E_Comp_Wl_Data *) e_comp->wl_comp_data;
+
+    EINA_SAFETY_ON_NULL_RETURN_VAL(buffer != NULL, NULL);
+
+    tsurface = wayland_tbm_server_get_surface(wl_comp_data->tbm.server, buffer->resource);
+
+    return tsurface;
+}
+
+static void
+_e_eom_canvas_render_post(void *data EINA_UNUSED, Evas *e EINA_UNUSED, void *event_info EINA_UNUSED)
+{
+    Ecore_Drm_Output * drm_output;
+    tbm_surface_h surface;
+
+    E_Client *ec = data;
+    EINA_SAFETY_ON_NULL_RETURN(ec != NULL);
+    EINA_SAFETY_ON_NULL_RETURN(ec->frame != NULL);
+
+    drm_output = _e_eom_get_drm_output_for_client(ec);
+    EINA_SAFETY_ON_NULL_RETURN(drm_output != NULL);
+
+    surface = _e_eom_get_tbm_surface_for_client(ec);
+
+    _e_eom_set_output(drm_output, surface);
+}
+
+static void
+_e_eom_fullscreen_pre_cb_hook(void *data, E_Client *ec)
+{
+    Ecore_Drm_Output * drm_output;
+    tbm_surface_h surface;
+
+    EINA_SAFETY_ON_NULL_RETURN(ec != NULL);
+    EINA_SAFETY_ON_NULL_RETURN(ec->frame != NULL);
+
+    drm_output = _e_eom_get_drm_output_for_client(ec);
+    EINA_SAFETY_ON_NULL_RETURN(drm_output != NULL);
+
+    surface = _e_eom_get_tbm_surface_for_client(ec);
+
+    _e_eom_set_output(drm_output, surface);
+
+    evas_event_callback_add(ec->frame, EVAS_CALLBACK_RENDER_POST, _e_eom_canvas_render_post, ec);
 }
 
 static Eina_Bool
@@ -192,6 +272,12 @@ _e_eom_deinit()
           ecore_event_handler_del(h);
      }
 
+   if (fullscreen_pre_hook)
+     {
+        e_client_hook_del(fullscreen_pre_hook);
+        fullscreen_pre_hook = NULL;
+     }
+
    if (g_eom->global) wl_global_destroy(g_eom->global);
 
    E_FREE(g_eom);
@@ -214,6 +300,8 @@ _e_eom_init()
 
    E_LIST_HANDLER_APPEND(g_eom->handlers, ECORE_DRM_EVENT_ACTIVATE, _e_eom_ecore_drm_activate_cb, g_eom);
    E_LIST_HANDLER_APPEND(g_eom->handlers, ECORE_DRM_EVENT_OUTPUT,   _e_eom_ecore_drm_output_cb,   g_eom);
+
+   fullscreen_pre_hook = e_client_hook_add(E_CLIENT_HOOK_FULLSCREEN_PRE, _e_eom_fullscreen_pre_cb_hook, NULL);
 
    return EINA_TRUE;
 
