@@ -7,6 +7,8 @@
 #include <tbm_bufmgr.h>
 #include <tbm_surface.h>
 
+#include <tdm.h>
+
 typedef struct _E_Eom E_Eom, *E_EomPtr;
 
 struct _E_Eom
@@ -15,6 +17,23 @@ struct _E_Eom
    struct wl_resource *resource;
    Eina_List *handlers;
 };
+
+typedef struct _Ecore_Drm_Hal_Output
+{
+   tdm_output *output;
+   tdm_layer *primary_layer;
+} Ecore_Drm_Hal_Output;
+
+typedef struct
+{
+   tdm_layer *layer;
+   tdm_output *output;
+} Eom_Event;
+
+static Eom_Event g_eom_event;
+
+/* hack to get frambuffer of primary output*/
+static int dci_output_id = -1;
 
 E_EomPtr g_eom = NULL;
 
@@ -49,16 +68,123 @@ _e_eom_e_comp_wl_output_get(Eina_List *outputs, const char *id)
    return NULL;
 }
 
+
+static Ecore_Drm_Hal_Output *
+_e_eom_e_comp_hal_output_get(const char *id, int primary_output_id)
+{
+   Ecore_Drm_Hal_Output * hal_output;
+   Ecore_Drm_Output *drm_output;
+   Ecore_Drm_Device *dev;
+   Eina_List *l;
+
+
+   if (strcmp(id, "HDMI-A-0"))
+   {
+	   dci_output_id = 1;
+	   EOM_DBG("not find output\n");
+	   return NULL;
+   }
+
+   if ( dci_output_id == -1 )
+   {
+	   /*
+	    * We are trying to find id of build in output aka main one, by this id we
+	    *  will get frambuffer. HDMI is found first by E during initialization
+	    *  so we need this function to be called twice to get appropriate
+	    *  primary output id. That mean that E must emit ECORE_DRM_EVENT_OUTPUT
+	    *  event twice
+	    */
+	   return NULL;
+   }
+
+   EOM_DBG("dci_output_id:%d\n", dci_output_id);
+
+   EINA_LIST_FOREACH(ecore_drm_devices_get(), l, dev)
+   {
+	   drm_output = ecore_drm_device_output_name_find(dev, id);
+   }
+
+   if (!drm_output)
+   {
+	   EOM_DBG("not find drm output\n");
+	   return NULL;
+   }
+
+   hal_output =  ecore_drm_output_hal_private_get(drm_output);
+   if (!hal_output)
+   {
+   	   EOM_DBG("not find hal output output\n");
+   	   return NULL;
+   }
+
+   EOM_DBG("find\n");
+   return hal_output;
+}
+
+static tbm_surface_h
+_e_eom_e_comp_tdm_surface_get()
+{
+	Ecore_Drm_Fb* fb;
+
+	fb = _ecore_drm_display_fb_find_with_id(dci_output_id);
+	if (!fb)
+	{
+		EOM_DBG("no Ecore_Drm_Fb for dci_output_id:%d\n", dci_output_id);
+		return NULL;
+	}
+
+	if (!fb->hal_buffer)
+	{
+		EOM_DBG("no hal_buffer\n");
+		return NULL;
+	}
+
+	return fb->hal_buffer;
+}
+
+static void
+_ecore_drm_display_output_cb_commit(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUSED,
+                                    unsigned int tv_sec EINA_UNUSED, unsigned int tv_usec EINA_UNUSED,
+                                    void *user_data)
+{
+	Eom_Event *eom_event = (Eom_Event *)user_data;
+	tdm_error err = TDM_ERROR_NONE;
+
+	tbm_surface_h tdm_buffer = _e_eom_e_comp_tdm_surface_get();
+	if (!tdm_buffer)
+	{
+		EOM_ERR("Event: tdm_buffer is NULL\n");
+		return;
+	}
+
+	/* Do clone */
+	tdm_layer_set_buffer(eom_event->layer, tdm_buffer);
+
+	err = tdm_output_commit(eom_event->output, 0, NULL, eom_event);
+	if (err != TDM_ERROR_NONE)
+	{
+		EOM_ERR("Event: Cannot commit crtc\n");
+		return;
+	}
+}
+
 static Eina_Bool
 _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *event)
 {
    Ecore_Drm_Event_Output *e;
    E_EomPtr eom = data;
-   E_Comp_Wl_Output *output;
-   Eina_List *l2;
+   E_Comp_Wl_Output *wl_output;
+   Ecore_Drm_Hal_Output *hal_output;
+   tbm_surface_h tdm_buffer;
+   Ecore_Drm_Fb *fb;
+   Ecore_Drm_Device *dev;
+   Eina_List *l, *l2;
+   Eom_Event *eom_event = &g_eom_event;
    struct wl_resource *output_resource;
    enum wl_eom_type eom_type = WL_EOM_TYPE_NONE;
    char buff[PATH_MAX];
+   tdm_error err = TDM_ERROR_NONE;
+
 
    if (!(e = event)) goto end;
 
@@ -70,20 +196,48 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
    snprintf(buff, sizeof(buff), "%s", e->name);
 
    /* get the e_comp_wl_output */
-   output = _e_eom_e_comp_wl_output_get(e_comp_wl->outputs, buff);
-   if (!output)
-     {
-        EOM_ERR("no e_comp_wl_outputs. (%s)\n", buff);
-        goto end;
-     }
+   wl_output = _e_eom_e_comp_wl_output_get(e_comp_wl->outputs, buff);
+   if (!wl_output)
+	{
+	EOM_ERR("no e_comp_wl_outputs. (%s)\n", buff);
+		goto end;
+	}
 
-   /* TODO:
-    * we need ecore_drm_output_connector_get()/ecore_drm_output_conn_name_get()
-    * function to get the connector type
-    */
+   /* Get hal output */
+   hal_output = _e_eom_e_comp_hal_output_get(buff, e->id);
+	if (!hal_output)
+	{
+		EOM_ERR("no hal outputs, (%s)\n", buff);
+		goto end;
+	}
 
-   /* send notify in each outputs associated with e_comp_wl_output */
-   EINA_LIST_FOREACH(output->resources, l2, output_resource)
+	/* Get main frame buffer */
+	tdm_buffer = _e_eom_e_comp_tdm_surface_get();
+	if (!tdm_buffer )
+	{
+		EOM_ERR("no framebuffer\n");
+		goto end;
+	}
+
+	/*
+	 *  TODO: convert primary output size to external one
+	 */
+
+	/* Do clone */
+	tdm_layer_set_buffer(hal_output->primary_layer, tdm_buffer);
+
+	eom_event->layer = hal_output->primary_layer;
+	eom_event->output = hal_output->output;
+
+	err = tdm_output_commit(hal_output->output, 0, _ecore_drm_display_output_cb_commit, &eom_event);
+	if (err != TDM_ERROR_NONE)
+	{
+		EOM_ERR("Cannot commit crtc\n");
+		return ECORE_CALLBACK_PASS_ON;
+	}
+
+
+   EINA_LIST_FOREACH(wl_output->resources, l2, output_resource)
      {
         if (e->plug)
           wl_eom_send_output_type(eom->resource,
@@ -100,6 +254,7 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
 end:
    return ECORE_CALLBACK_PASS_ON;
 }
+
 
 void
 _e_eom_set_output(Ecore_Drm_Output * drm_output, tbm_surface_h surface)
