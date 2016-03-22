@@ -93,6 +93,9 @@ _e_eom_hal_output_get(const char *id, int primary_output_id)
    tdm_error err = TDM_ERROR_NONE;
 
    tdm_output *output = NULL;
+   tdm_output_mode *modes;
+   tdm_output_mode *big_mode;
+   int count = 0;
 
 
    /*
@@ -127,6 +130,57 @@ _e_eom_hal_output_get(const char *id, int primary_output_id)
      {
        EOM_DBG("there is no HAL output for:%d\n", crtc_id);
        return NULL;
+     }
+
+   int min_w, min_h, max_w, max_h, preferred_align;
+   err = tdm_output_get_available_size(output, &min_w, &min_h, &max_w, &max_h,
+   	                                    &preferred_align);
+   if (err != TDM_ERROR_NONE)
+     {
+       EOM_DBG("Gent get geometry for hal output");
+       return NULL;
+     }
+
+   EOM_DBG("HAL size min:%dx%d  max:%dx%d  alighn:%d\n",
+		   min_w, min_h, max_w, max_h, preferred_align);
+
+   /*
+    * Force TDM to make setCrtc onto new buffer
+    */
+
+
+   err = tdm_output_get_available_modes(output, &modes, &count);
+   if (err != TDM_ERROR_NONE)
+     {
+        EOM_DBG("Get availvable modes filed\n");
+        return NULL;
+     }
+
+   big_mode = &modes[0];
+
+   int i = 0;
+   for (i = 0; i < count; i++)
+   {
+	   if ((modes[i].vdisplay + modes[i].hdisplay) >=
+		   (big_mode->vdisplay + big_mode->hdisplay))
+	   {
+		   big_mode = &modes[i];
+	   }
+   }
+
+   if (!big_mode)
+     {
+	    EOM_DBG("no Big mode\n");
+	    return NULL;
+     }
+
+   EOM_DBG("BIG_MODE: %dx%d\n", big_mode->hdisplay, big_mode->vdisplay);
+
+   err = tdm_output_set_mode(output, big_mode);
+   if (err != TDM_ERROR_NONE)
+     {
+   	    EOM_DBG("set Mode failed\n");
+   	    return NULL;
      }
 
    EOM_DBG("find\n");
@@ -175,8 +229,8 @@ _e_eom_hal_layer_get(tdm_output *output, int width, int height)
      }
 
    memset(&set_layer_info, 0x0, sizeof(tdm_info_layer));
-      set_layer_info.src_config.size.h = width;
-      set_layer_info.src_config.size.v = height;
+      set_layer_info.src_config.size.h = 3840;
+      set_layer_info.src_config.size.v = 2560;
       set_layer_info.src_config.pos.x = 0;
       set_layer_info.src_config.pos.y = 0;
       set_layer_info.src_config.pos.w = width;
@@ -204,11 +258,21 @@ _e_eom_root_window_tdm_surface_get()
    Evas_Engine_Info_Drm *einfo;
    Ecore_Drm_Fb* fb;
 
-   if (!e_comp || !e_comp->evas)
-     return NULL;
+   if (!e_comp)
+     {
+       EOM_DBG("e_comp NULL\n");
+       return NULL;
+     }
+
+   if (!e_comp->evas)
+	{
+	  EOM_DBG("e_comp->evas NULL");
+	  return NULL;
+	}
 
    einfo = (Evas_Engine_Info_Drm *)evas_engine_info_get(e_comp->evas);
 
+   /*
    fb = _ecore_drm_display_fb_find_with_id(einfo->info.buffer_id);
    if (!fb)
      {
@@ -223,6 +287,7 @@ _e_eom_root_window_tdm_surface_get()
      }
 
    EOM_DBG("find hal_buffer");
+   */
    return fb->hal_buffer;
 }
 
@@ -263,6 +328,9 @@ _e_eom_create_extrenal_output_buffer(int width, int height)
 {
    tbm_surface_h buffer;
    tbm_surface_info_s buffer_info;
+
+   width = 3840;
+   height = 2560;
 
    /*
     * TODO: Add support of other formats
@@ -354,20 +422,25 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
      }
 
    /* Get main frame buffer */
+
+   /*
    src_buffer = _e_eom_root_window_tdm_surface_get();
    if (!src_buffer )
      {
        EOM_ERR("no framebuffer\n");
        goto end;
      }
+     */
+
 
    dst_buffer = _e_eom_create_extrenal_output_buffer(e->w, e->h);
    if (!dst_buffer )
      {
-       EOM_ERR("no framebuffer\n");
+       EOM_ERR("no dst buffer\n");
        goto end;
      }
 
+   /*
    tbm_surface_get_info(src_buffer, &src_buffer_info );
 
    EOM_DBG("FRAMEBUFFER buffer: %dx%d   bpp:%d   size:%d",
@@ -377,6 +450,7 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
          src_buffer_info.size);
 
    _e_eom_put_src_to_dst(src_buffer, dst_buffer);
+   */
 
 
    tdm_err = tdm_layer_get_info(hal_layer, &layer_info);
