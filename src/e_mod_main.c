@@ -36,10 +36,13 @@ typedef struct
 {
    tdm_layer *layer;
    tdm_output *output;
-   tbm_surface_h dst_buffers;
-} Eom_Event;
 
-static Eom_Event g_eom_event;
+   tbm_surface_h dst_buffers[2];
+   int current_buffer;
+
+} Eom_Data;
+
+static Eom_Data g_eom_data;
 
 E_EomPtr g_eom = NULL;
 
@@ -78,66 +81,65 @@ _e_eom_e_comp_wl_output_get(Eina_List *outputs, const char *id)
     * There is no external output
     */
    if (num_outputs == 1)
-     return NULL;
+   {
+      EOM_DBG("ONE OUTPUT\n");
+      return NULL;
+   }
 
    return output;
 }
 
 static tdm_output *
-_e_eom_hal_output_get(const char *id, int primary_output_id)
+_e_eom_hal_output_get(const char *id)
 {
-   Ecore_Drm_Output *drm_output;
    Ecore_Drm_Device *dev;
-   Eina_List *l;
-   int crtc_id = 0;
-   tdm_error err = TDM_ERROR_NONE;
-
-   tdm_output *output = NULL;
+   Ecore_Drm_Output *drm_output, *o;
+   tdm_output *output;
    tdm_output_mode *modes;
    tdm_output_mode *big_mode;
+   tdm_error err = TDM_ERROR_NONE;
+   Eina_List *l, *ll;
+   int crtc_id = 0;
    int count = 0;
-
 
    /*
     * Temporary take into account only HDMI
     */
-   if (strcmp(id, "HDMI-A-0"))
-     {
-        EOM_DBG("not find output\n");
-        return NULL;
-     }
 
    EINA_LIST_FOREACH(ecore_drm_devices_get(), l, dev)
      {
-       drm_output = ecore_drm_device_output_name_find(dev, id);
+        EINA_LIST_FOREACH(dev->external_outputs, ll, o)
+          {
+             if ((ecore_drm_output_name_get(o)) && (!strcmp(id, ecore_drm_output_name_get(o))))
+               drm_output = o;
+          }
      }
 
    if (!drm_output)
      {
-        EOM_DBG("not find drm output\n");
+        EOM_DBG("ERROR: drm output was not found\n");
         return NULL;
      }
 
    crtc_id = ecore_drm_output_crtc_id_get(drm_output);
    if (crtc_id == 0)
     {
-       EOM_DBG("crtc is 0\n");
+       EOM_DBG("ERROR: crtc is 0\n");
        return NULL;
     }
 
    output = tdm_display_get_output(g_eom->dpy, crtc_id, NULL);
    if (!output)
      {
-        EOM_DBG("there is no HAL output for:%d\n", crtc_id);
+        EOM_DBG("ERROR: there is no HAL output for:%d\n", crtc_id);
         return NULL;
      }
 
    int min_w, min_h, max_w, max_h, preferred_align;
-   err = tdm_output_get_available_size(output, &min_w, &min_h, &max_w, &max_h,
-                                          &preferred_align);
+   err = tdm_output_get_available_size(output, &min_w, &min_h, &max_w, &max_h, &preferred_align);
    if (err != TDM_ERROR_NONE)
      {
-        EOM_DBG("Gent get geometry for hal output");
+        EOM_DBG("ERROR: Gent get geometry for hal output");
         return NULL;
      }
 
@@ -147,8 +149,6 @@ _e_eom_hal_output_get(const char *id, int primary_output_id)
    /*
     * Force TDM to make setCrtc onto new buffer
     */
-
-
    err = tdm_output_get_available_modes(output, &modes, &count);
    if (err != TDM_ERROR_NONE)
      {
@@ -161,11 +161,8 @@ _e_eom_hal_output_get(const char *id, int primary_output_id)
    int i = 0;
    for (i = 0; i < count; i++)
      {
-        if ((modes[i].vdisplay + modes[i].hdisplay) >=
-            (big_mode->vdisplay + big_mode->hdisplay))
-          {
-             big_mode = &modes[i];
-          }
+        if ((modes[i].vdisplay + modes[i].hdisplay) >= (big_mode->vdisplay + big_mode->hdisplay))
+          big_mode = &modes[i];
      }
 
    if (!big_mode)
@@ -183,7 +180,7 @@ _e_eom_hal_output_get(const char *id, int primary_output_id)
         return NULL;
      }
 
-   EOM_DBG("find\n");
+   EOM_DBG("Created output: %p\n", output);
    return output;
 }
 
@@ -195,8 +192,8 @@ _e_eom_hal_layer_get(tdm_output *output, int width, int height)
    tdm_layer *layer;
    tdm_error err = TDM_ERROR_NONE;
    tdm_layer_capability capa;
-
    tdm_info_layer set_layer_info;
+
 
    err = tdm_output_get_layer_count(output, &count);
    if (err != TDM_ERROR_NONE)
@@ -229,8 +226,8 @@ _e_eom_hal_layer_get(tdm_output *output, int width, int height)
      }
 
    memset(&set_layer_info, 0x0, sizeof(tdm_info_layer));
-      set_layer_info.src_config.size.h = 3840;
-      set_layer_info.src_config.size.v = 2560;
+      set_layer_info.src_config.size.h = width;
+      set_layer_info.src_config.size.v = height;
       set_layer_info.src_config.pos.x = 0;
       set_layer_info.src_config.pos.y = 0;
       set_layer_info.src_config.pos.w = width;
@@ -292,55 +289,88 @@ _e_eom_root_window_tdm_surface_get()
 }
 
 static void
-_e_eom_output_cb_commit(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUSED,
+_e_eom_output_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUSED,
                            unsigned int tv_sec EINA_UNUSED, unsigned int tv_usec EINA_UNUSED,
                            void *user_data)
 {
-   Eom_Event *eom_event = (Eom_Event *)user_data;
-   tdm_error err = TDM_ERROR_NONE;
+   Eom_Data *eom_data;
    tbm_surface_h src_buffer;
-   tbm_surface_h dst_buffer;
+   tdm_error err = TDM_ERROR_NONE;
 
-   EOM_ERR("Event\n");
+   EOM_DBG("Event 1\n");
 
+   if (!user_data)
+   {
+      EOM_ERR("ERROR: EVENT: user_data is NULL\n");
+      return;
+   }
+
+   eom_data = (Eom_Data *)user_data;
+
+   EOM_DBG("Event 2\n");
+
+/*
    src_buffer = _e_eom_root_window_tdm_surface_get();
    if (!src_buffer )
      {
         EOM_ERR("Event: tdm_buffer is NULL\n");
         return;
      }
+*/
 
-   dst_buffer = eom_event->dst_buffers;
+   if (eom_data->current_buffer == 1)
+     {
+        eom_data->current_buffer = 0;
 
-   /* Do clone */
-   tdm_layer_set_buffer(eom_event->layer, dst_buffer);
+        err = tdm_layer_set_buffer(eom_data->layer,
+        		                   eom_data->dst_buffers[eom_data->current_buffer]);
+       if (err != TDM_ERROR_NONE)
+         {
+            EOM_ERR("ERROR: EVENT: set buffer 0\n");
+            return;
+         }
 
-   err = tdm_output_commit(eom_event->output, 0, NULL, eom_event);
+       EOM_DBG("Event 3\n");
+     }
+   else
+     {
+        eom_data->current_buffer = 1;
+
+        err = tdm_layer_set_buffer(eom_data->layer,
+                                   eom_data->dst_buffers[eom_data->current_buffer]);
+       if (err != TDM_ERROR_NONE)
+         {
+            EOM_ERR("ERROR: EVENT: set buffer 1\n");
+            return;
+         }
+
+       EOM_DBG("Event 4\n");
+     }
+
+   err = tdm_output_commit(eom_data->output, 0, _e_eom_output_commit_cb, eom_data);
    if (err != TDM_ERROR_NONE)
      {
-        EOM_ERR("Event: Cannot commit crtc\n");
+        EOM_ERR("ERROR: EVENT: commit\n");
         return;
      }
+
+   EOM_DBG("Event 5\n");
 }
 
-static tbm_surface_h
-_e_eom_create_extrenal_output_buffer(int width, int height)
+static int
+_e_eom_create_output_buffers(Eom_Data *eom_data, int width, int height)
 {
    tbm_surface_h buffer;
    tbm_surface_info_s buffer_info;
 
-   width = 3840;
-   height = 2560;
-
    /*
     * TODO: Add support of other formats
     */
-   buffer = tbm_surface_internal_create_with_flags(width, height,
-         TBM_FORMAT_ARGB8888, TBM_BO_SCANOUT);
+   buffer = tbm_surface_internal_create_with_flags(width, height, TBM_FORMAT_ARGB8888, TBM_BO_SCANOUT);
    if (!buffer)
      {
         EOM_DBG("can not create dst_buffer\n");
-        return NULL;
+        goto err;
      }
 
    /*
@@ -348,17 +378,53 @@ _e_eom_create_extrenal_output_buffer(int width, int height)
     */
    memset(&buffer_info, 0x0, sizeof(tbm_surface_info_s));
    if (tbm_surface_map(buffer,
-         TBM_SURF_OPTION_READ | TBM_SURF_OPTION_WRITE,
-         &buffer_info) != TBM_SURFACE_ERROR_NONE)
+                       TBM_SURF_OPTION_READ | TBM_SURF_OPTION_WRITE,
+                       &buffer_info) != TBM_SURFACE_ERROR_NONE)
      {
         EOM_DBG("can not mmap buffer\n");
-        return NULL;
+        goto err;
      }
 
    memset(buffer_info.planes[0].ptr, 0xff, buffer_info.planes[0].size);
    tbm_surface_unmap(buffer);
 
-   return buffer;
+   eom_data->dst_buffers[0] = buffer;
+
+   /*
+    * TODO: Add support of other formats
+    */
+   buffer = tbm_surface_internal_create_with_flags(width, height, TBM_FORMAT_ARGB8888, TBM_BO_SCANOUT);
+   if (!buffer)
+     {
+        EOM_DBG("can not create dst_buffer\n");
+        goto err;
+     }
+
+   /*
+    * TODO: temp code for testing, actual convert will be in _e_eom_put_src_to_dst()
+    */
+   memset(&buffer_info, 0x00, sizeof(tbm_surface_info_s));
+   if (tbm_surface_map(buffer,
+                       TBM_SURF_OPTION_READ | TBM_SURF_OPTION_WRITE,
+                       &buffer_info) != TBM_SURFACE_ERROR_NONE)
+     {
+        EOM_DBG("can not mmap buffer\n");
+        goto err;
+     }
+
+   memset(buffer_info.planes[0].ptr, 0x55, buffer_info.planes[0].size);
+   tbm_surface_unmap(buffer);
+
+   eom_data->dst_buffers[1] = buffer;
+
+   return 1;
+
+err:
+
+/*
+ * Add deinitialization
+ */
+   return 0;
 }
 
 static void
@@ -369,25 +435,112 @@ _e_eom_put_src_to_dst( tbm_surface_h src_buffer, tbm_surface_h dst_buffer)
 
 }
 
+static int
+_e_eom_set_up_external_output(const char *output_name, int width, int height)
+{
+   tdm_output *hal_output;
+   tdm_layer *hal_layer;
+   tdm_info_layer layer_info;
+   tdm_error tdm_err = TDM_ERROR_NONE;
+   Eom_Data *eom_data = &g_eom_data;
+   int ret = 0;
+
+
+   hal_output = _e_eom_hal_output_get(output_name);
+   if (!hal_output)
+     {
+        EOM_ERR("ERROR: get hal output for, (%s)\n", output_name);
+        goto err;
+     }
+
+   hal_layer = _e_eom_hal_layer_get(hal_output, width, height);
+   if (!hal_layer)
+     {
+        EOM_ERR("ERROR: get hal layer\n");
+        goto err;
+     }
+
+   ret = _e_eom_create_output_buffers(eom_data, width, height);
+   if (!ret )
+     {
+        EOM_ERR("ERROR: create buffers \n");
+        goto err;
+     }
+
+
+/*
+   src_buffer = _e_eom_root_window_tdm_surface_get();
+   if (!src_buffer )
+    {
+       EOM_ERR("no framebuffer\n");
+      goto end;
+    }
+*/
+
+/*
+   tbm_surface_get_info(src_buffer, &src_buffer_info );
+
+   EOM_DBG("FRAMEBUFFER buffer: %dx%d   bpp:%d   size:%d",
+           src_buffer_info.width,
+           src_buffer_info.height,
+           src_buffer_info.bpp,
+           src_buffer_info.size);
+
+   _e_eom_put_src_to_dst(src_buffer, dst_buffer);
+*/
+
+
+   tdm_err = tdm_layer_get_info(hal_layer, &layer_info);
+   if (tdm_err != TDM_ERROR_NONE)
+     {
+        EOM_ERR ("ERROR: get layer info: %d", tdm_err);
+        goto err;
+     }
+
+   EOM_DBG("LAYER INFO: %dx%d, pos (x:%d, y:%d, w:%d, h:%d,  dpos (x:%d, y:%d, w:%d, h:%d))",
+           layer_info.src_config.size.h,  layer_info.src_config.size.v,
+           layer_info.src_config.pos.x, layer_info.src_config.pos.y,
+           layer_info.src_config.pos.w, layer_info.src_config.pos.h,
+           layer_info.dst_pos.x, layer_info.dst_pos.y,
+           layer_info.dst_pos.w, layer_info.dst_pos.h);
+
+   eom_data->layer = hal_layer;
+   eom_data->output = hal_output;
+   eom_data->current_buffer = 0;
+
+   tdm_err = tdm_layer_set_buffer(hal_layer, eom_data->dst_buffers[eom_data->current_buffer]);
+   if (tdm_err != TDM_ERROR_NONE)
+     {
+        EOM_ERR("ERROR: set buffer on layer:%d\n", tdm_err);
+        goto err;
+     }
+
+   tdm_err = tdm_output_commit(hal_output, 0, _e_eom_output_commit_cb, eom_data);
+   if (tdm_err != TDM_ERROR_NONE)
+     {
+        EOM_ERR("ERROR: commit crtc:%d\n", tdm_err);
+        goto err;
+     }
+
+   return 1;
+
+err:
+/*
+ * TODO: add deinitialization
+ */
+   return 0;
+}
+
 static Eina_Bool
 _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *event)
 {
    Ecore_Drm_Event_Output *e;
    E_EomPtr eom = data;
    E_Comp_Wl_Output *wl_output;
-   tdm_output *hal_output;
-   tdm_layer *hal_layer;
-   tdm_info_layer layer_info;
-   tbm_surface_h src_buffer;
-   tbm_surface_h dst_buffer;
-   tbm_surface_info_s src_buffer_info ;
-   Eina_List *l2;
-   Eom_Event *eom_event = &g_eom_event;
    struct wl_resource *output_resource;
    enum wl_eom_type eom_type = WL_EOM_TYPE_NONE;
    char buff[PATH_MAX];
-   tdm_error tdm_err = TDM_ERROR_NONE;
-   int tbm_err = 0;
+   int ret = 0;
 
    if (!(e = event)) goto end;
 
@@ -398,93 +551,41 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
 
    snprintf(buff, sizeof(buff), "%s", e->name);
 
-   /* get the e_comp_wl_output */
+   if (strcmp(e->name, "HDMI-A-0"))
+     {
+        EOM_DBG("Skip internal output\n");
+        goto end;
+     }
+
+   /*
+    *  Get e_comp_wl_output
+    */
+/*
    wl_output = _e_eom_e_comp_wl_output_get(e_comp_wl->outputs, buff);
    if (!wl_output)
      {
         EOM_ERR("no e_comp_wl_outputs. (%s)\n", buff);
         goto end;
      }
+*/
 
-   /* Get hal output */
-   hal_output = _e_eom_hal_output_get(buff, e->id);
-   if (!hal_output)
+   /*
+    *  Initialize external output
+    */
+   ret = _e_eom_set_up_external_output(buff, e->w, e->h);
+   if (!ret)
      {
-        EOM_ERR("no hal outputs, (%s)\n", buff);
+        EOM_ERR("Failed initialize external output\n");
         goto end;
      }
 
-   hal_layer = _e_eom_hal_layer_get(hal_output, e->w, e->h);
-   if (!hal_layer)
-     {
-        EOM_ERR("no hal layer\n");
-        goto end;
-     }
 
    /* Get main frame buffer */
 
-   /*
-   src_buffer = _e_eom_root_window_tdm_surface_get();
-   if (!src_buffer )
-     {
-       EOM_ERR("no framebuffer\n");
-       goto end;
-     }
-     */
 
 
-   dst_buffer = _e_eom_create_extrenal_output_buffer(e->w, e->h);
-   if (!dst_buffer )
-     {
-        EOM_ERR("no dst buffer\n");
-        goto end;
-     }
 
    /*
-   tbm_surface_get_info(src_buffer, &src_buffer_info );
-
-   EOM_DBG("FRAMEBUFFER buffer: %dx%d   bpp:%d   size:%d",
-         src_buffer_info.width,
-         src_buffer_info.height,
-         src_buffer_info.bpp,
-         src_buffer_info.size);
-
-   _e_eom_put_src_to_dst(src_buffer, dst_buffer);
-   */
-
-
-   tdm_err = tdm_layer_get_info(hal_layer, &layer_info);
-   if (tdm_err != TDM_ERROR_NONE)
-     {
-        EOM_ERR ("failed get layer info", tdm_err);
-        goto end;
-     }
-
-   EOM_DBG("LAYER INFO: %dx%d, pos (x:%d, y:%d, w:%d, h:%d,  dpos (x:%d, y:%d, w:%d, h:%d))",
-         layer_info.src_config.size.h,  layer_info.src_config.size.v,
-         layer_info.src_config.pos.x, layer_info.src_config.pos.y,
-         layer_info.src_config.pos.w, layer_info.src_config.pos.h,
-         layer_info.dst_pos.x, layer_info.dst_pos.y,
-         layer_info.dst_pos.w, layer_info.dst_pos.h);
-
-   tdm_err = tdm_layer_set_buffer(hal_layer, dst_buffer);
-   if (tdm_err != TDM_ERROR_NONE)
-     {
-        EOM_ERR("Failed set buffer on layer:%d\n", tdm_err);
-        goto end;
-     }
-
-   eom_event->layer = hal_layer;
-   eom_event->output = hal_output;
-   eom_event->dst_buffers = dst_buffer;
-
-   tdm_err = tdm_output_commit(hal_output, 0, _e_eom_output_cb_commit, &eom_event);
-   if (tdm_err != TDM_ERROR_NONE)
-     {
-        EOM_ERR("Cannot commit crtc:%d\n", tdm_err);
-        goto end;
-     }
-
    EINA_LIST_FOREACH(wl_output->resources, l2, output_resource)
      {
        if (e->plug)
@@ -505,8 +606,9 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
                           WL_EOM_STATUS_DISCONNECTION);
          }
      }
+     */
 
-   EOM_DBG("8\n");
+
 
 end:
    return ECORE_CALLBACK_PASS_ON;
