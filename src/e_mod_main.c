@@ -144,6 +144,7 @@ _e_eom_pp_cb(tbm_surface_h surface, void *user_data)
      }
 
    g_eom_data.pp_buffer = !g_eom_data.current_buffer;
+   EOM_DBG("ERROR: PP EVENT: pp:%d  curr:%d\n", g_eom_data.pp_buffer, g_eom_data.current_buffer);
 
    tdm_err = tdm_buffer_add_release_handler(g_eom_data.dst_buffers[g_eom_data.pp_buffer],
                                             _e_eom_pp_cb, &g_eom_data);
@@ -190,12 +191,14 @@ _e_eom_output_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EI
 
    EOM_DBG("Event 2\n");
 
+   EOM_DBG("EVENT: pp:%d  curr:%d\n", eom_data->pp_buffer, eom_data->current_buffer);
+
    if (eom_data->current_buffer == 1)
      {
         eom_data->current_buffer = 0;
 
         err = tdm_layer_set_buffer(eom_data->layer,
-                                   eom_data->dst_buffers[eom_data->current_buffer]);
+                                   eom_data->dst_buffers[!eom_data->pp_buffer]);
        if (err != TDM_ERROR_NONE)
          {
             EOM_ERR("ERROR: EVENT: set buffer 0\n");
@@ -209,7 +212,7 @@ _e_eom_output_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EI
         eom_data->current_buffer = 1;
 
         err = tdm_layer_set_buffer(eom_data->layer,
-                                   eom_data->dst_buffers[eom_data->current_buffer]);
+                                   eom_data->dst_buffers[!eom_data->pp_buffer]);
         if (err != TDM_ERROR_NONE)
           {
              EOM_ERR("ERROR: EVENT: set buffer 1\n");
@@ -552,7 +555,7 @@ _e_eom_create_output_buffers(E_EomDataPtr eom_data, int width, int height)
    /*
     * TODO: temp code for testing, actual convert will be in _e_eom_put_src_to_dst()
     */
-   /*
+
    memset(&buffer_info, 0x0, sizeof(tbm_surface_info_s));
    if (tbm_surface_map(buffer,
                        TBM_SURF_OPTION_READ | TBM_SURF_OPTION_WRITE,
@@ -562,9 +565,9 @@ _e_eom_create_output_buffers(E_EomDataPtr eom_data, int width, int height)
         goto err;
      }
 
-   memset(buffer_info.planes[0].ptr, 0xff, buffer_info.planes[0].size);
+   memset(buffer_info.planes[0].ptr, 0xFF, buffer_info.planes[0].size);
    tbm_surface_unmap(buffer);
-   */
+
 
    eom_data->dst_buffers[0] = buffer;
 
@@ -579,10 +582,8 @@ _e_eom_create_output_buffers(E_EomDataPtr eom_data, int width, int height)
      }
 
    /*
-   /*
     * TODO: temp code for testing, actual convert will be in _e_eom_put_src_to_dst()
     */
-   /*
    memset(&buffer_info, 0x00, sizeof(tbm_surface_info_s));
    if (tbm_surface_map(buffer,
                        TBM_SURF_OPTION_READ | TBM_SURF_OPTION_WRITE,
@@ -592,9 +593,9 @@ _e_eom_create_output_buffers(E_EomDataPtr eom_data, int width, int height)
         goto err;
      }
 
-   memset(buffer_info.planes[0].ptr, 0x55, buffer_info.planes[0].size);
+   memset(buffer_info.planes[0].ptr, 0xFF, buffer_info.planes[0].size);
    tbm_surface_unmap(buffer);
-   */
+
    eom_data->dst_buffers[1] = buffer;
 
    return 1;
