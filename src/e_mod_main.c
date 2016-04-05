@@ -43,18 +43,20 @@ struct _E_Eom
    struct wl_resource *resource;
    Eina_List *handlers;
 
-   int is_external_init;
-   int is_internal_grab;
-
    tdm_display *dpy;
    tbm_bufmgr bufmgr;
    int fd;
 
-   E_EomOutMode src_mode;
-   E_EomOutMode dst_mode;
-
+   /* external output data */
    char *ext_output_name;
+   int is_external_init;
+   E_EomOutMode src_mode;
+   E_Comp_Wl_Output *wl_output;
+
+   /* internal output data */
+   int is_internal_grab;
    char *int_output_name;
+   E_EomOutMode dst_mode;
 };
 
 struct _E_Eom_Data
@@ -70,51 +72,26 @@ struct _E_Eom_Data
 };
 
 static E_EomData g_eom_data;
-
 E_EomPtr g_eom = NULL;
-
+static E_Client_Hook *fullscreen_pre_hook = NULL;
 E_API E_Module_Api e_modapi = { E_MODULE_API_VERSION, "EOM Module" };
 
-static E_Client_Hook *fullscreen_pre_hook = NULL;
-
-
+/* handle external output */
+static E_Comp_Wl_Output *_e_eom_e_comp_wl_output_get(const Eina_List *outputs, const char *id);
+static int _e_eom_set_up_external_output(const char *output_name, int width, int height);
+static tdm_output * _e_eom_hal_output_get(const char *id);
+static tdm_layer * _e_eom_hal_layer_get(tdm_output *output, int width, int height);
+static int _e_eom_create_output_buffers(E_EomDataPtr eom_data, int width, int height);
+static enum wl_eom_type _e_eom_output_name_to_eom_type(const char *output_name);
+/* handle internal output, pp */
+static int _e_eom_root_internal_surface_get(const char *output_name, int width, int height);
+static tbm_surface_h _e_eom_root_internal_tdm_surface_get(const char *name);
+static int _e_eom_pp_src_to_dst( tbm_surface_h src_buffer);
 /* tdm handlers */
-static void
-_e_eom_pp_cb(tbm_surface_h surface, void *user_data);
-static void
-_e_eom_output_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUSED,
+static void _e_eom_pp_cb(tbm_surface_h surface, void *user_data);
+static void _e_eom_output_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUSED,
                                     unsigned int tv_sec EINA_UNUSED, unsigned int tv_usec EINA_UNUSED,
                                     void *user_data);
-
-/* handle external output */
-static E_Comp_Wl_Output *
-_e_eom_e_comp_wl_output_get(const Eina_List *outputs, const char *id);
-
-static int
-_e_eom_set_up_external_output(const char *output_name, int width, int height);
-
-static tdm_output *
-_e_eom_hal_output_get(const char *id);
-
-static tdm_layer *
-_e_eom_hal_layer_get(tdm_output *output, int width, int height);
-
-static int
-_e_eom_create_output_buffers(E_EomDataPtr eom_data, int width, int height);
-
-static enum wl_eom_type
-_e_eom_output_name_to_eom_type(const char *output_name);
-
-/* handle internal output, pp */
-static int
-_e_eom_root_internal_surface_get(const char *output_name, int width, int height);
-
-static tbm_surface_h
-_e_eom_root_internal_tdm_surface_get(const char *name);
-
-static int
-_e_eom_pp_src_to_dst( tbm_surface_h src_buffer);
-
 
 static void
 _e_eom_pp_cb(tbm_surface_h surface, void *user_data)
@@ -375,6 +352,9 @@ _e_eom_deinit_external_output()
                tbm_surface_destroy(g_eom_data.dst_buffers[i]);
         }
     }
+
+   if (g_eom->wl_output)
+      g_eom->wl_output = NULL;
 }
 
 static tdm_output *
@@ -786,7 +766,7 @@ _e_eom_pp_src_to_dst( tbm_surface_h src_buffer)
         return 0;
      }
 
-   EOM_DBG("PP: OK\n", err);
+   EOM_DBG("PP: OK\n");
 
    return 1;
 }
@@ -850,6 +830,9 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
              goto end;
           }
 
+        g_eom->wl_output = wl_output;
+
+        /*
         EINA_LIST_FOREACH(wl_output->resources, l, output_resource)
           {
              if (e->plug)
@@ -871,6 +854,8 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
                                           WL_EOM_STATUS_DISCONNECTION);
               }
           }
+          */
+
      }
    else if (strcmp(e->name, "DSI-0") == 0 && g_eom->is_external_init && flag == 2)
      {
@@ -914,10 +899,11 @@ _e_eom_get_drm_output_for_client(E_Client *ec)
    return NULL;
 }
 
-/*
+
 static tbm_surface_h
 _e_eom_get_tbm_surface_for_client(E_Client *ec)
 {
+	/*
    E_Pixmap *pixmap = ec->pixmap;
    E_Comp_Wl_Buffer *buffer = e_pixmap_resource_get(pixmap);
    tbm_surface_h tsurface = NULL;
@@ -928,6 +914,7 @@ _e_eom_get_tbm_surface_for_client(E_Client *ec)
    tsurface = wayland_tbm_server_get_surface(wl_comp_data->tbm.server, buffer->resource);
 
    return tsurface;
+   */
 }
 
 static void
@@ -951,11 +938,31 @@ _e_eom_canvas_render_post(void *data EINA_UNUSED, Evas *e EINA_UNUSED, void *eve
 static void
 _e_eom_fullscreen_pre_cb_hook(void *data, E_Client *ec)
 {
+
+	/*
+   const Eina_List *l;
+   E_Comp_Wl_Output *ext_output = NULL;
+   int loc = 0;
+
    Ecore_Drm_Output * drm_output;
    tbm_surface_h surface;
 
    EINA_SAFETY_ON_NULL_RETURN(ec != NULL);
    EINA_SAFETY_ON_NULL_RETURN(ec->frame != NULL);
+
+
+   if (g_eom->is_external_init == 0 &&
+		   (ext_output = _e_eom_e_comp_wl_output_get(e_comp_wl->outputs, g_eom->ext_output_name)) == NULL)
+     {
+        EINA_LIST_FOREACH(ext_output->clients, l, o)
+		  {
+
+		  }
+     }
+
+
+
+
 
    drm_output = _e_eom_get_drm_output_for_client(ec);
    EINA_SAFETY_ON_NULL_RETURN(drm_output != NULL);
@@ -965,9 +972,11 @@ _e_eom_fullscreen_pre_cb_hook(void *data, E_Client *ec)
    _e_eom_set_output(drm_output, surface);
 
    evas_event_callback_add(ec->frame, EVAS_CALLBACK_RENDER_POST, _e_eom_canvas_render_post, ec);
+
+   */
 }
 
-*/
+
 static Eina_Bool
 _e_eom_ecore_drm_activate_cb(void *data, int type EINA_UNUSED, void *event)
 {
@@ -994,7 +1003,6 @@ _e_eom_ecore_drm_activate_cb(void *data, int type EINA_UNUSED, void *event)
 end:
    return ECORE_CALLBACK_PASS_ON;
 }
-
 
 
 /* wl_eom_set_keygrab request handler */
@@ -1049,6 +1057,48 @@ _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32
                           _e_eom_wl_resource_destory_cb);
 
    eom->resource = resource;
+
+   if (g_eom->is_external_init && g_eom->is_internal_grab)
+     {
+        E_Comp_Wl_Output *wl_output = NULL;
+        struct wl_resource *output_resource;
+        const Eina_List *l;
+        enum wl_eom_type eom_type = WL_EOM_TYPE_NONE;
+
+        EOM_DBG("send info of external output\n");
+
+        wl_output = _e_eom_e_comp_wl_output_get(e_comp_wl->outputs, g_eom->ext_output_name);
+        if (!wl_output)
+          {
+             EOM_DBG("failed to get wl_output\n");
+             return;
+          }
+
+        eom_type = _e_eom_output_name_to_eom_type(g_eom->ext_output_name);
+        if (eom_type == WL_EOM_TYPE_NONE)
+         {
+        	EOM_DBG("create wl_eom global resource.\n");
+        	return;
+         }
+
+	    EINA_LIST_FOREACH(wl_output->resources, l, output_resource)
+          {
+		     wl_eom_send_output_type(eom->resource,
+									 output_resource,
+									 eom_type,
+									 WL_EOM_STATUS_CONNECTION);
+
+		     wl_eom_send_output_attribute(eom->resource,
+		    		                      output_resource,
+										  WL_EOM_ATTRIBUTE_NORMAL,
+										  WL_EOM_ATTRIBUTE_STATE_ACTIVE,
+										  WL_EOM_ERROR_NONE);
+
+		     wl_eom_send_output_mode(eom->resource,
+					 	 	 	 	 output_resource,
+									 WL_EOM_MODE_MIRROR);
+		  }
+     }
 
    EOM_DBG("create wl_eom global resource.\n");
 }
@@ -1135,9 +1185,7 @@ _e_eom_init()
 
    E_LIST_HANDLER_APPEND(g_eom->handlers, ECORE_DRM_EVENT_ACTIVATE, _e_eom_ecore_drm_activate_cb, g_eom);
    E_LIST_HANDLER_APPEND(g_eom->handlers, ECORE_DRM_EVENT_OUTPUT,   _e_eom_ecore_drm_output_cb,   g_eom);
-/*
    fullscreen_pre_hook = e_client_hook_add(E_CLIENT_HOOK_FULLSCREEN_PRE, _e_eom_fullscreen_pre_cb_hook, NULL);
-*/
 
    g_eom->is_external_init = 0;
    g_eom->is_internal_grab = 0;
