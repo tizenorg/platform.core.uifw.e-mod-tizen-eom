@@ -13,6 +13,7 @@ struct wl_client;
 struct wl_resource;
 
 struct wl_eom;
+struct wl_output;
 
 extern const struct wl_interface wl_eom_interface;
 
@@ -170,7 +171,7 @@ struct wl_eom_interface {
 #define WL_EOM_OUTPUT_ATTRIBUTE_SINCE_VERSION	1
 
 static inline void
-wl_eom_send_output_type(struct wl_resource *resource_, struct wl_resource *output, uint32_t type, uint32_t status)
+wl_eom_send_output_type(struct wl_resource *resource_, uint32_t output, uint32_t type, uint32_t status)
 {
 	wl_resource_post_event(resource_, WL_EOM_OUTPUT_TYPE, output, type, status);
 }

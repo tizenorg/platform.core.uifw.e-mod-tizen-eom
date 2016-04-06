@@ -78,7 +78,7 @@
     </request>
 
     <event name="output_type">
-      <arg name="output" type="object" interface="wl_output"/>
+      <arg name="output" type="uint"/>
       <arg name="type" type="uint"/>
       <arg name="status" type="uint"/>
     </event>

@@ -5,10 +5,10 @@
 extern const struct wl_interface wl_output_interface;
 
 static const struct wl_interface *types[] = {
-	&wl_output_interface,
+	NULL,
+	NULL,
 	NULL,
 	&wl_output_interface,
-	NULL,
 	NULL,
 	&wl_output_interface,
 	NULL,
@@ -19,11 +19,11 @@ static const struct wl_interface *types[] = {
 };
 
 static const struct wl_message wl_eom_requests[] = {
-	{ "set_attribute", "ou", types + 0 },
+	{ "set_attribute", "ou", types + 3 },
 };
 
 static const struct wl_message wl_eom_events[] = {
-	{ "output_type", "ouu", types + 2 },
+	{ "output_type", "uuu", types + 0 },
 	{ "output_mode", "ou", types + 5 },
 	{ "output_attribute", "ouuu", types + 7 },
 };

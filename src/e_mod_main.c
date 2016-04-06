@@ -44,6 +44,7 @@ struct _E_Eom
    /* external output data */
    char *ext_output_name;
    int is_external_init;
+   int id;
    E_EomOutMode src_mode;
    E_Comp_Wl_Output *wl_output;
 
@@ -874,6 +875,7 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
               }
 
             g_eom->is_external_init = 1;
+            g_eom->id = e->id;
 
             _e_eom_set_eom_attribute_state(WL_EOM_ATTRIBUTE_STATE_ACTIVE);
             _e_eom_set_eom_status(WL_EOM_STATUS_CONNECTION);
@@ -884,6 +886,7 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
          {
             g_eom->is_external_init = 0;
             g_eom->is_internal_grab = 0;
+            g_eom->id = -1;
 
             _e_eom_set_eom_attribute_state(WL_EOM_ATTRIBUTE_STATE_INACTIVE);
             _e_eom_set_eom_status(WL_EOM_STATUS_DISCONNECTION);
@@ -1137,24 +1140,21 @@ _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32
         return;
      }
 
-   EINA_LIST_FOREACH(wl_output->resources, l, output_resource)
-     {
-        wl_eom_send_output_type(eom->resource,
+   wl_eom_send_output_type(eom->resource,
+                           eom->id,
+                           eom_type,
+                           _e_eom_get_eom_status());
+/*
+   wl_eom_send_output_attribute(eom->resource,
                                 output_resource,
-                                eom_type,
-                                _e_eom_get_eom_status());
+                                _e_eom_get_eom_attribute(),
+                                _e_eom_get_eom_attribute_state(),
+                                WL_EOM_ERROR_NONE);
 
-
-        wl_eom_send_output_attribute(eom->resource,
-                                     output_resource,
-                                     _e_eom_get_eom_attribute(),
-                                     _e_eom_get_eom_attribute_state(),
-                                     WL_EOM_ERROR_NONE);
-
-        wl_eom_send_output_mode(eom->resource,
-                                output_resource,
-                                _e_eom_get_eom_mode());
-     }
+   wl_eom_send_output_mode(eom->resource,
+                           output_resource,
+                           _e_eom_get_eom_mode());
+*/
 
    EOM_DBG("create wl_eom global resource.\n");
 }

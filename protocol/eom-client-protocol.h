@@ -13,6 +13,7 @@ struct wl_client;
 struct wl_resource;
 
 struct wl_eom;
+struct wl_output;
 
 extern const struct wl_interface wl_eom_interface;
 
@@ -160,7 +161,7 @@ struct wl_eom_listener {
 	 */
 	void (*output_type)(void *data,
 			    struct wl_eom *wl_eom,
-			    struct wl_output *output,
+			    uint32_t output,
 			    uint32_t type,
 			    uint32_t status);
 	/**
