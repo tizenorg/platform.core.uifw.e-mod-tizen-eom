@@ -152,12 +152,12 @@ enum wl_eom_attribute_state {
 struct wl_eom_interface {
 	/**
 	 * set_attribute - (none)
-	 * @output: (none)
+	 * @output_id: (none)
 	 * @attribute: (none)
 	 */
 	void (*set_attribute)(struct wl_client *client,
 			      struct wl_resource *resource,
-			      struct wl_resource *output,
+			      uint32_t output_id,
 			      uint32_t attribute);
 };
 
@@ -170,21 +170,21 @@ struct wl_eom_interface {
 #define WL_EOM_OUTPUT_ATTRIBUTE_SINCE_VERSION	1
 
 static inline void
-wl_eom_send_output_type(struct wl_resource *resource_, struct wl_resource *output, uint32_t type, uint32_t status)
+wl_eom_send_output_type(struct wl_resource *resource_, uint32_t output_id, uint32_t type, uint32_t status)
 {
-	wl_resource_post_event(resource_, WL_EOM_OUTPUT_TYPE, output, type, status);
+	wl_resource_post_event(resource_, WL_EOM_OUTPUT_TYPE, output_id, type, status);
 }
 
 static inline void
-wl_eom_send_output_mode(struct wl_resource *resource_, struct wl_resource *output, uint32_t mode)
+wl_eom_send_output_mode(struct wl_resource *resource_, uint32_t output_id, uint32_t mode)
 {
-	wl_resource_post_event(resource_, WL_EOM_OUTPUT_MODE, output, mode);
+	wl_resource_post_event(resource_, WL_EOM_OUTPUT_MODE, output_id, mode);
 }
 
 static inline void
-wl_eom_send_output_attribute(struct wl_resource *resource_, struct wl_resource *output, uint32_t attribute, uint32_t attribute_state, uint32_t error)
+wl_eom_send_output_attribute(struct wl_resource *resource_, uint32_t output_id, uint32_t attribute, uint32_t attribute_state, uint32_t error)
 {
-	wl_resource_post_event(resource_, WL_EOM_OUTPUT_ATTRIBUTE, output, attribute, attribute_state, error);
+	wl_resource_post_event(resource_, WL_EOM_OUTPUT_ATTRIBUTE, output_id, attribute, attribute_state, error);
 }
 
 #ifdef  __cplusplus

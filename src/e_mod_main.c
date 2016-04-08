@@ -36,6 +36,7 @@ struct _E_Eom
    tbm_bufmgr bufmgr;
    int fd;
 
+   /* eom state */
    enum wl_eom_mode eom_mode;
    enum wl_eom_attribute eom_attribute;
    enum wl_eom_attribute_state eom_attribute_state;
@@ -44,12 +45,13 @@ struct _E_Eom
    /* external output data */
    char *ext_output_name;
    int is_external_init;
+   int id;
    E_EomOutMode src_mode;
    E_Comp_Wl_Output *wl_output;
 
    /* internal output data */
-   int is_internal_grab;
    char *int_output_name;
+   int is_internal_grab;
    E_EomOutMode dst_mode;
 };
 
@@ -125,7 +127,7 @@ _e_eom_get_eom_attribute()
 static inline int
 _e_eom_set_eom_attribute(enum wl_eom_attribute attribute)
 {
-   if (attribute == WL_EOM_ATTRIBUTE_NONE)
+   if (attribute == WL_EOM_ATTRIBUTE_NONE || g_eom->eom_attribute == WL_EOM_ATTRIBUTE_NONE)
      {
         g_eom->eom_attribute = attribute;
         return 1;
@@ -158,8 +160,6 @@ _e_eom_pp_cb(tbm_surface_h surface, void *user_data)
    E_EomDataPtr eom_data = NULL;
    tdm_error tdm_err = TDM_ERROR_NONE;
 
-   EOM_DBG("PP EVENT: get\n");
-
    if (!user_data)
      {
         EOM_DBG("ERROR: PP EVENT: user data is NULL\n");
@@ -180,7 +180,6 @@ _e_eom_pp_cb(tbm_surface_h surface, void *user_data)
      }
 
    g_eom_data.pp_buffer = !g_eom_data.current_buffer;
-   EOM_DBG("ERROR: PP EVENT: pp:%d  curr:%d\n", g_eom_data.pp_buffer, g_eom_data.current_buffer);
 
    tdm_err = tdm_buffer_add_release_handler(g_eom_data.dst_buffers[g_eom_data.pp_buffer],
                                             _e_eom_pp_cb, &g_eom_data);
@@ -203,8 +202,6 @@ _e_eom_pp_cb(tbm_surface_h surface, void *user_data)
         EOM_DBG ("ERROR: PP EVENT: pp commit:%d\n", tdm_err );
         return;
      }
-
-   EOM_DBG ("PP EVENT: ok\n");
 }
 
 static void
@@ -215,8 +212,6 @@ _e_eom_output_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EI
    E_EomDataPtr eom_data;
    tdm_error err = TDM_ERROR_NONE;
 
-   EOM_DBG("Event 1\n");
-
    if (!user_data)
      {
         EOM_ERR("ERROR: EVENT: user_data is NULL\n");
@@ -224,10 +219,6 @@ _e_eom_output_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EI
      }
 
    eom_data = (E_EomDataPtr)user_data;
-
-   EOM_DBG("Event 2\n");
-
-   EOM_DBG("EVENT: pp:%d  curr:%d\n", eom_data->pp_buffer, eom_data->current_buffer);
 
    if (eom_data->current_buffer == 1)
      {
@@ -240,8 +231,6 @@ _e_eom_output_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EI
             EOM_ERR("ERROR: EVENT: set buffer 0\n");
             return;
          }
-
-       EOM_DBG("Event 3\n");
      }
    else
      {
@@ -254,8 +243,6 @@ _e_eom_output_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EI
              EOM_ERR("ERROR: EVENT: set buffer 1\n");
              return;
           }
-
-        EOM_DBG("Event 4\n");
      }
 
    err = tdm_output_commit(eom_data->output, 0, _e_eom_output_commit_cb, eom_data);
@@ -264,8 +251,6 @@ _e_eom_output_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EI
         EOM_ERR("ERROR: EVENT: commit\n");
         return;
      }
-
-   EOM_DBG("Event 5\n");
 }
 
 static E_Comp_Wl_Output *
@@ -874,6 +859,7 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
               }
 
             g_eom->is_external_init = 1;
+            g_eom->id = e->id;
 
             _e_eom_set_eom_attribute_state(WL_EOM_ATTRIBUTE_STATE_ACTIVE);
             _e_eom_set_eom_status(WL_EOM_STATUS_CONNECTION);
@@ -884,6 +870,7 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
          {
             g_eom->is_external_init = 0;
             g_eom->is_internal_grab = 0;
+            g_eom->id = -1;
 
             _e_eom_set_eom_attribute_state(WL_EOM_ATTRIBUTE_STATE_INACTIVE);
             _e_eom_set_eom_status(WL_EOM_STATUS_DISCONNECTION);
@@ -1068,18 +1055,41 @@ end:
 
 /* wl_eom_set_keygrab request handler */
 static void
-_e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource *resource, struct wl_resource *output, uint32_t attribute)
+_e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource *resource, uint32_t output_id, uint32_t attribute)
 {
+   int ret = 0;
+	/*
    (void) client;
    (void) attribute;
+   */
 
-   EOM_DBG("attribute:%d\n", attribute);
+   EOM_DBG("attribute:%d +++ output:%d\n", attribute, output_id);
 
-   wl_eom_send_output_attribute(resource,
-                        output,
-                        attribute,
-                        WL_EOM_ATTRIBUTE_STATE_ACTIVE,
-                        WL_EOM_ERROR_NONE);
+   /*
+    * TODO: check output_id
+    */
+   ret = _e_eom_set_eom_attribute(attribute);
+   if (ret == 0)
+     {
+	    EOM_DBG("set attribute FAILED\n");
+
+	    wl_eom_send_output_attribute(resource,
+                                     g_eom->id,
+                                     _e_eom_get_eom_attribute(),
+                                     _e_eom_get_eom_attribute_state(),
+                                     WL_EOM_ERROR_OUTPUT_OCCUPIED);
+     }
+   else
+     {
+	    EOM_DBG("set attribute OK\n");
+
+	    wl_eom_send_output_attribute(resource,
+                                     g_eom->id,
+                                     _e_eom_get_eom_attribute(),
+                                     _e_eom_get_eom_attribute_state(),
+                                     WL_EOM_ERROR_NONE);
+     }
+
 }
 
 static const struct wl_eom_interface _e_eom_wl_implementation =
@@ -1137,24 +1147,20 @@ _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32
         return;
      }
 
-   EINA_LIST_FOREACH(wl_output->resources, l, output_resource)
-     {
-        wl_eom_send_output_type(eom->resource,
-                                output_resource,
-                                eom_type,
-                                _e_eom_get_eom_status());
+   wl_eom_send_output_type(eom->resource,
+                           eom->id,
+                           eom_type,
+                           _e_eom_get_eom_status());
 
+   wl_eom_send_output_attribute(eom->resource,
+                                eom->id,
+                                _e_eom_get_eom_attribute(),
+                                _e_eom_get_eom_attribute_state(),
+                                WL_EOM_ERROR_NONE);
 
-        wl_eom_send_output_attribute(eom->resource,
-                                     output_resource,
-                                     _e_eom_get_eom_attribute(),
-                                     _e_eom_get_eom_attribute_state(),
-                                     WL_EOM_ERROR_NONE);
-
-        wl_eom_send_output_mode(eom->resource,
-                                output_resource,
-                                _e_eom_get_eom_mode());
-     }
+   wl_eom_send_output_mode(eom->resource,
+                           eom->id,
+                           _e_eom_get_eom_mode());
 
    EOM_DBG("create wl_eom global resource.\n");
 }

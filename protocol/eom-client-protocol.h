@@ -154,34 +154,34 @@ enum wl_eom_attribute_state {
 struct wl_eom_listener {
 	/**
 	 * output_type - (none)
-	 * @output: (none)
+	 * @output_id: (none)
 	 * @type: (none)
 	 * @status: (none)
 	 */
 	void (*output_type)(void *data,
 			    struct wl_eom *wl_eom,
-			    struct wl_output *output,
+			    uint32_t output_id,
 			    uint32_t type,
 			    uint32_t status);
 	/**
 	 * output_mode - (none)
-	 * @output: (none)
+	 * @output_id: (none)
 	 * @mode: (none)
 	 */
 	void (*output_mode)(void *data,
 			    struct wl_eom *wl_eom,
-			    struct wl_output *output,
+			    uint32_t output_id,
 			    uint32_t mode);
 	/**
 	 * output_attribute - (none)
-	 * @output: (none)
+	 * @output_id: (none)
 	 * @attribute: (none)
 	 * @attribute_state: (none)
 	 * @error: (none)
 	 */
 	void (*output_attribute)(void *data,
 				 struct wl_eom *wl_eom,
-				 struct wl_output *output,
+				 uint32_t output_id,
 				 uint32_t attribute,
 				 uint32_t attribute_state,
 				 uint32_t error);
@@ -197,6 +197,8 @@ wl_eom_add_listener(struct wl_eom *wl_eom,
 
 #define WL_EOM_SET_ATTRIBUTE	0
 
+#define WL_EOM_SET_ATTRIBUTE_SINCE_VERSION	1
+
 static inline void
 wl_eom_set_user_data(struct wl_eom *wl_eom, void *user_data)
 {
@@ -209,6 +211,12 @@ wl_eom_get_user_data(struct wl_eom *wl_eom)
 	return wl_proxy_get_user_data((struct wl_proxy *) wl_eom);
 }
 
+static inline uint32_t
+wl_eom_get_version(struct wl_eom *wl_eom)
+{
+	return wl_proxy_get_version((struct wl_proxy *) wl_eom);
+}
+
 static inline void
 wl_eom_destroy(struct wl_eom *wl_eom)
 {
@@ -216,10 +224,10 @@ wl_eom_destroy(struct wl_eom *wl_eom)
 }
 
 static inline void
-wl_eom_set_attribute(struct wl_eom *wl_eom, struct wl_output *output, uint32_t attribute)
+wl_eom_set_attribute(struct wl_eom *wl_eom, uint32_t output_id, uint32_t attribute)
 {
 	wl_proxy_marshal((struct wl_proxy *) wl_eom,
-			 WL_EOM_SET_ATTRIBUTE, output, attribute);
+			 WL_EOM_SET_ATTRIBUTE, output_id, attribute);
 }
 
 #ifdef  __cplusplus

@@ -2,30 +2,22 @@
 #include <stdint.h>
 #include "wayland-util.h"
 
-extern const struct wl_interface wl_output_interface;
 
 static const struct wl_interface *types[] = {
-	&wl_output_interface,
 	NULL,
-	&wl_output_interface,
-	NULL,
-	NULL,
-	&wl_output_interface,
-	NULL,
-	&wl_output_interface,
 	NULL,
 	NULL,
 	NULL,
 };
 
 static const struct wl_message wl_eom_requests[] = {
-	{ "set_attribute", "ou", types + 0 },
+	{ "set_attribute", "uu", types + 0 },
 };
 
 static const struct wl_message wl_eom_events[] = {
-	{ "output_type", "ouu", types + 2 },
-	{ "output_mode", "ou", types + 5 },
-	{ "output_attribute", "ouuu", types + 7 },
+	{ "output_type", "uuu", types + 0 },
+	{ "output_mode", "uu", types + 0 },
+	{ "output_attribute", "uuuu", types + 0 },
 };
 
 WL_EXPORT const struct wl_interface wl_eom_interface = {
