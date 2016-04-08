@@ -100,13 +100,13 @@ static Eina_Bool
 _e_eom_ecore_drm_activate_cb(void *data, int type EINA_UNUSED, void *event)
 {
    Ecore_Drm_Event_Activate *e = NULL;
-   E_EomPtr eom = NULL;
+   /* E_EomPtr eom = NULL; */
 
    EOM_DBG("_e_eom_ecore_drm_activate_cb called\n");
 
    if ((!event) || (!data)) goto end;
    e = event;
-   eom = data;
+   /* eom = data; */
 
    EOM_DBG("e->active:%d\n", e->active);
 
@@ -203,7 +203,7 @@ _e_eom_init()
    EINA_SAFETY_ON_NULL_GOTO(e_comp_wl, err);
 
    g_eom = E_NEW(E_Eom, 1);
-   EINA_SAFETY_ON_NULL_RETURN_VAL(g_eom, NULL);
+   EINA_SAFETY_ON_NULL_RETURN_VAL(g_eom, EINA_FALSE);
 
    g_eom->global = wl_global_create(e_comp_wl->wl.disp,
                                     &wl_eom_interface,
