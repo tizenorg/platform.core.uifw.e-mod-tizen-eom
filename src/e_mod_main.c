@@ -1092,9 +1092,16 @@ _e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource 
 
 }
 
+static void
+_e_eom_wl_request_set_window_cb(struct wl_client *client, struct wl_resource *resource, struct wl_resource *resource_window, struct wl_resource *output)
+{
+
+}
+
 static const struct wl_eom_interface _e_eom_wl_implementation =
 {
-   _e_eom_wl_request_set_attribute_cb
+   _e_eom_wl_request_set_attribute_cb,
+   _e_eom_wl_request_set_window_cb
 };
 
 /* wl_eom global object destroy function */

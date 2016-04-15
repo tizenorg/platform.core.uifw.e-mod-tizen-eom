@@ -76,7 +76,12 @@
       <arg name="output_id" type="uint"/>
       <arg name="attribute" type="uint"/>
     </request>
-
+    
+    <request name="set_window">
+      <arg name="output" type="object" interface="wl_surface"/>
+      <arg name="window" type="object" interface="wl_output"/>
+    </request>
+    
     <event name="output_type">
       <arg name="output_id" type="uint"/>
       <arg name="type" type="uint"/>
