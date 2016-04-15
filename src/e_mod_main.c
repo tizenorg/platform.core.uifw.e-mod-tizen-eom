@@ -69,6 +69,9 @@ struct _E_Eom_Data
 static E_EomData g_eom_data;
 E_EomPtr g_eom = NULL;
 static E_Client_Hook *fullscreen_pre_hook = NULL;
+static E_Client_Hook *external_buffer_attach_hook = NULL;
+static E_Client_Hook *external_buffer_damage_hook = NULL;
+static E_Client_Hook *external_buffer_commit__hook = NULL;
 E_API E_Module_Api e_modapi = { E_MODULE_API_VERSION, "EOM Module" };
 static int eom_output_attributes[NUM_ATTR][NUM_ATTR] =
    {
@@ -685,8 +688,6 @@ _e_eom_root_internal_surface_get(const char *output_name, int width, int height)
 
    EOM_DBG("INT SURFACE: 2\n");
 
-   g_eom->is_internal_grab = 1;
-
    return 1;
 }
 
@@ -921,6 +922,8 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
              EOM_ERR("ERROR: get root surfcae\n");
              goto end;
           }
+
+        g_eom->is_internal_grab = 1;
      }
 
    ++flag;
@@ -929,11 +932,59 @@ end:
    return ECORE_CALLBACK_PASS_ON;
 }
 
-
 void
 _e_eom_set_output(Ecore_Drm_Output * drm_output, tbm_surface_h surface)
 {
    /* TODO: chack save and commit*/
+}
+
+static void
+_e_eom_external_buffer_attach_hook_cb(void *data, E_Client *ec)
+{
+   E_Comp_Wl_Buffer *buffer;
+   tbm_surface_info_s info;
+   tbm_surface_h tbm_surf;
+   int ret;
+
+   buffer = e_client_get_external_buffer(ec);
+   if (buffer == NULL)
+     {
+	    EOM_DBG("ERROR: client buffer is NULL\n");
+	    return;
+     }
+
+   EOM_DBG("HOOK: buffer attach ec:%p  type:%d  %dx%d  res:%p  shm_buf:%p  busy:%d+++\n",
+   		   ec, buffer->type, buffer->w, buffer->h, buffer->resource , buffer->shm_buffer, buffer->busy);
+
+   tbm_surf = wayland_tbm_server_get_surface(NULL, buffer->resource);
+   EOM_DBG("HOOK: buffer attach: %p +++\n", tbm_surf);
+   if (tbm_surf == NULL)
+     {
+   	    EOM_DBG("ERROR: client tbm buffer is NULL\n");
+   	    return;
+     }
+
+   ret = tbm_surface_get_info(tbm_surf, &info);
+   if (ret == TBM_SURFACE_ERROR_NONE)
+     {
+        EOM_DBG("ERROR: failed get info\n");
+      	return;
+     }
+
+   EOM_DBG("HOOK: buffer attach tbm: %dx%d\n",
+		   info.width,info.height);
+}
+
+static void
+_e_eom_external_buffer_damage_hook_cb(void *data, E_Client *ec)
+{
+   EOM_DBG("HOOK: buffer damage ec:%p\n", ec);
+}
+
+static void
+_e_eom_external_buffer_commit_hook_cb(void *data, E_Client *ec)
+{
+   EOM_DBG("HOOK: buffer commit ec:%p\n", ec);
 }
 #if 0
 static Ecore_Drm_Output *
@@ -974,6 +1025,8 @@ _e_eom_get_tbm_surface_for_client(E_Client *ec)
 static void
 _e_eom_canvas_render_post(void *data EINA_UNUSED, Evas *e EINA_UNUSED, void *event_info EINA_UNUSED)
 {
+   EOM_DBG("HOOK: post\n");
+   /*
    Ecore_Drm_Output * drm_output;
    tbm_surface_h surface;
 
@@ -987,11 +1040,14 @@ _e_eom_canvas_render_post(void *data EINA_UNUSED, Evas *e EINA_UNUSED, void *eve
    surface = _e_eom_get_tbm_surface_for_client(ec);
 
    _e_eom_set_output(drm_output, surface);
+   */
 }
 #endif
 static void
 _e_eom_fullscreen_pre_cb_hook(void *data, E_Client *ec)
 {
+   EOM_DBG("HOOK: fullscreen ec:%p\n", ec);
+
    /*
    const Eina_List *l;
    E_Comp_Wl_Output *ext_output = NULL;
@@ -1002,7 +1058,6 @@ _e_eom_fullscreen_pre_cb_hook(void *data, E_Client *ec)
 
    EINA_SAFETY_ON_NULL_RETURN(ec != NULL);
    EINA_SAFETY_ON_NULL_RETURN(ec->frame != NULL);
-
 
    if (g_eom->is_external_init == 0 &&
       (ext_output = _e_eom_e_comp_wl_output_get(e_comp_wl->outputs, g_eom->ext_output_name)) == NULL)
@@ -1019,11 +1074,12 @@ _e_eom_fullscreen_pre_cb_hook(void *data, E_Client *ec)
    surface = _e_eom_get_tbm_surface_for_client(ec);
 
    _e_eom_set_output(drm_output, surface);
-
-   evas_event_callback_add(ec->frame, EVAS_CALLBACK_RENDER_POST, _e_eom_canvas_render_post, ec);
    */
-}
 
+
+
+   evas_event_callback_add(e_comp->evas, EVAS_CALLBACK_RENDER_POST, _e_eom_canvas_render_post, ec);
+}
 
 static Eina_Bool
 _e_eom_ecore_drm_activate_cb(void *data, int type EINA_UNUSED, void *event)
@@ -1052,28 +1108,20 @@ end:
    return ECORE_CALLBACK_PASS_ON;
 }
 
-
 /* wl_eom_set_keygrab request handler */
 static void
 _e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource *resource, uint32_t output_id, uint32_t attribute)
 {
    int ret = 0;
-	/*
-   (void) client;
-   (void) attribute;
-   */
 
    EOM_DBG("attribute:%d +++ output:%d\n", attribute, output_id);
 
-   /*
-    * TODO: check output_id
-    */
    ret = _e_eom_set_eom_attribute(attribute);
    if (ret == 0)
      {
-	    EOM_DBG("set attribute FAILED\n");
+       EOM_DBG("set attribute FAILED\n");
 
-	    wl_eom_send_output_attribute(resource,
+       wl_eom_send_output_attribute(resource,
                                      g_eom->id,
                                      _e_eom_get_eom_attribute(),
                                      _e_eom_get_eom_attribute_state(),
@@ -1081,15 +1129,14 @@ _e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource 
      }
    else
      {
-	    EOM_DBG("set attribute OK\n");
+       EOM_DBG("set attribute OK\n");
 
-	    wl_eom_send_output_attribute(resource,
+       wl_eom_send_output_attribute(resource,
                                      g_eom->id,
                                      _e_eom_get_eom_attribute(),
                                      _e_eom_get_eom_attribute_state(),
                                      WL_EOM_ERROR_NONE);
      }
-
 }
 
 static const struct wl_eom_interface _e_eom_wl_implementation =
@@ -1245,7 +1292,13 @@ _e_eom_init()
 
    E_LIST_HANDLER_APPEND(g_eom->handlers, ECORE_DRM_EVENT_ACTIVATE, _e_eom_ecore_drm_activate_cb, g_eom);
    E_LIST_HANDLER_APPEND(g_eom->handlers, ECORE_DRM_EVENT_OUTPUT,   _e_eom_ecore_drm_output_cb,   g_eom);
-   fullscreen_pre_hook = e_client_hook_add(E_CLIENT_HOOK_FULLSCREEN_PRE, _e_eom_fullscreen_pre_cb_hook, NULL);
+   fullscreen_pre_hook = e_client_hook_add(E_CLIENT_HOOK_EXTERNAL_FULLSCREEN_SET, _e_eom_fullscreen_pre_cb_hook, NULL);
+   external_buffer_attach_hook = e_client_hook_add(E_CLIENT_HOOK_EXTERNAL_BUFFER_ATTACH,
+                                                   _e_eom_external_buffer_attach_hook_cb, NULL);
+   external_buffer_damage_hook = e_client_hook_add(E_CLIENT_HOOK_EXTERNAL_BUFFER_DAMAGE,
+                                                   _e_eom_external_buffer_damage_hook_cb, NULL);
+   external_buffer_commit__hook = e_client_hook_add(E_CLIENT_HOOK_EXTERNAL_BUFFER_COMMIT,
+                                                    _e_eom_external_buffer_commit_hook_cb, NULL);
 
    g_eom->is_external_init = 0;
    g_eom->is_internal_grab = 0;
