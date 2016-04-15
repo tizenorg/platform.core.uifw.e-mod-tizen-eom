@@ -12,6 +12,7 @@
 #include <tbm_surface.h>
 
 #include <tdm.h>
+#include <eom.h>
 
 #define NUM_MAIN_BUF 2
 #define NUM_ATTR 3
@@ -19,11 +20,39 @@
 typedef struct _E_Eom E_Eom, *E_EomPtr;
 typedef struct _E_Eom_Out_Mode E_EomOutMode, *E_EomOutModePtr;
 typedef struct _E_Eom_Data E_EomData, *E_EomDataPtr;
+typedef struct _E_Eom_Output E_EomOutput, *E_EomOutputPtr;
 
 struct _E_Eom_Out_Mode
 {
    int w;
    int h;
+};
+
+struct _E_Eom_Output
+{
+   unsigned int id;
+   eom_output_type_e type;
+   eom_output_mode_e mode;
+   unsigned int w;
+   unsigned int h;
+   unsigned int phys_width;
+   unsigned int phys_height;
+
+   tdm_output_conn_status status;
+   unsigned int mirror_run;
+   eom_output_attribute_e attribute;
+   eom_output_attribute_state_e attribute_state;
+
+   /* external output data */
+   char *ext_output_name;
+   int is_external_init;
+   E_EomOutMode src_mode;
+   E_Comp_Wl_Output *wl_output;
+
+   /* internal output data */
+   char *int_output_name;
+   int is_internal_grab;
+   E_EomOutMode dst_mode;
 };
 
 struct _E_Eom
@@ -36,6 +65,10 @@ struct _E_Eom
    tbm_bufmgr bufmgr;
    int fd;
 
+   Eina_List *outputs;
+   unsigned int output_count;
+
+#if 1
    /* eom state */
    enum wl_eom_mode eom_mode;
    enum wl_eom_attribute eom_attribute;
@@ -53,6 +86,7 @@ struct _E_Eom
    char *int_output_name;
    int is_internal_grab;
    E_EomOutMode dst_mode;
+#endif
 };
 
 struct _E_Eom_Data
@@ -727,7 +761,7 @@ _e_eom_root_internal_tdm_surface_get(const char *name)
         return NULL;
      }
 
-   //EOM_DBG("FRAMEBUFFER ECORE_DRM: is_client:%d mode%dx%d\n", fb->from_client, fb->w, fb->h);
+   /*EOM_DBG("FRAMEBUFFER ECORE_DRM: is_client:%d mode%dx%d\n", fb->from_client, fb->w, fb->h);*/
 
    return (tbm_surface_h)fb->hal_buffer;
 }
@@ -1108,8 +1142,8 @@ _e_eom_wl_resource_destory_cb(struct wl_resource *resource)
 static void
 _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 {
-   enum wl_eom_type eom_type = WL_EOM_TYPE_NONE;
-   E_Comp_Wl_Output *wl_output = NULL;
+/*   enum wl_eom_type eom_type = WL_EOM_TYPE_NONE;*/
+/*   E_Comp_Wl_Output *wl_output = NULL;*/
    struct wl_resource *resource;
    E_EomPtr eom = data;
 
@@ -1131,6 +1165,7 @@ _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32
 
    eom->resource = resource;
 
+#if 0
    wl_output = _e_eom_e_comp_wl_output_get(e_comp_wl->outputs, g_eom->ext_output_name);
    if (!wl_output)
      {
@@ -1159,7 +1194,10 @@ _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32
    wl_eom_send_output_mode(eom->resource,
                            eom->id,
                            _e_eom_get_eom_mode());
-
+#else
+   wl_eom_send_output_count(eom->resource,
+                            g_eom->output_count);
+#endif
    EOM_DBG("create wl_eom global resource.\n");
 }
 
@@ -1182,46 +1220,190 @@ _e_eom_deinit()
         fullscreen_pre_hook = NULL;
      }
 
+   if (g_eom->dpy) tdm_display_deinit(g_eom->dpy);
+   if (g_eom->bufmgr) tbm_bufmgr_deinit(g_eom->bufmgr);
+
    if (g_eom->global) wl_global_destroy(g_eom->global);
 
    E_FREE(g_eom);
 }
 
-int
+static Eina_Bool
+_e_eom_output_info_get(tdm_display *dpy)
+{
+   int i, count;
+   tdm_error ret = TDM_ERROR_NONE;
+
+   ret = tdm_display_get_output_count(dpy, &count);
+   if (ret != TDM_ERROR_NONE)
+     {
+        EOM_ERR("tdm_display_get_output_count fail\n");
+        return EINA_FALSE;
+     }
+
+   if (count <= 1)
+     {
+        EOM_DBG("output count is 1. device doesn't support external outputs.\n");
+        return EINA_FALSE;
+     }
+
+   g_eom->output_count = count - 1;
+   EOM_DBG("external output count : %d\n", g_eom->output_count);
+
+   for (i = 0; i < count; i++)
+     {
+        tdm_output *output = NULL;
+        E_EomOutputPtr new_output;
+        tdm_output_type type;
+        tdm_output_conn_status status;
+        unsigned int mmWidth, mmHeight;
+        const tdm_output_mode *mode;
+
+        output = tdm_display_get_output(dpy, i, &ret);
+        if (ret != TDM_ERROR_NONE)
+          {
+             EOM_ERR("tdm_display_get_output fail(ret:%d)", ret);
+             goto err;
+          }
+
+        if (!output)
+          {
+             EOM_ERR("tdm_display_get_output fail(no output:%d)", ret);
+             goto err;
+          }
+
+        ret = tdm_output_get_output_type(output, &type);
+        if (ret != TDM_ERROR_NONE)
+          {
+             EOM_ERR("tdm_output_get_output_type fail(%d)", ret);
+             goto err;
+          }
+        /* skip main output */
+        if ((type == TDM_OUTPUT_TYPE_DSI) || (type == TDM_OUTPUT_TYPE_LVDS))
+          continue;
+
+        new_output = E_NEW(E_EomOutput, 1);
+        if (!new_output)
+          {
+             EOM_ERR("calloc fail");
+             goto err;
+          }
+
+        ret = tdm_output_get_conn_status(output, &status);
+        if (ret != TDM_ERROR_NONE)
+          {
+             EOM_ERR("tdm_output_get_conn_status fail(%d)", ret);
+             free(new_output);
+             goto err;
+          }
+        new_output->id = i;
+        new_output->type = type;
+        new_output->status = (tdm_output_conn_status)status;
+        new_output->mode = EOM_OUTPUT_MODE_NONE;
+
+        if (status == TDM_OUTPUT_CONN_STATUS_DISCONNECTED)
+          {
+             EOM_DBG("create(%d)output, type:%d, status:%d",
+                     new_output->id, new_output->type, new_output->status);
+             new_output->mode = EOM_OUTPUT_MODE_NONE;
+             g_eom->outputs = eina_list_append(g_eom->outputs, new_output);
+             continue;
+          }
+
+        ret = tdm_output_get_mode(output, &mode);
+        if (ret != TDM_ERROR_NONE)
+          {
+             EOM_ERR("tdm_output_get_mode fail(%d)", ret);
+             free(new_output);
+             goto err;
+          }
+        new_output->w = mode->hdisplay;
+        new_output->h = mode->vdisplay;
+
+        ret = tdm_output_get_physical_size(output, &mmWidth, &mmHeight);
+        if (ret != TDM_ERROR_NONE)
+          {
+             EOM_ERR("tdm_output_get_conn_status fail(%d)", ret);
+             free(new_output);
+             goto err;
+          }
+        new_output->phys_width = mmWidth;
+        new_output->phys_height = mmHeight;
+
+        EOM_DBG("create(%d)output, type:%d, status:%d, w:%d, h:%d, mm_w:%d, mm_h:%d",
+                new_output->id, new_output->type, new_output->status,
+                new_output->w, new_output->h, new_output->phys_width, new_output->phys_height);
+
+        g_eom->outputs = eina_list_append(g_eom->outputs, new_output);
+     }
+
+   return EINA_TRUE;
+err:
+
+   if (g_eom->outputs)
+     {
+        Eina_List *l;
+        E_EomOutputPtr output;
+
+        EINA_LIST_FOREACH(g_eom->outputs, l, output)
+          {
+             free(output);
+          }
+        eina_list_free(g_eom->outputs);
+     }
+
+   return EINA_FALSE;
+}
+
+static Eina_Bool
 _e_eom_init_internal()
 {
-   tdm_error err = TDM_ERROR_NONE;
+   tdm_error ret = TDM_ERROR_NONE;
 
-   g_eom->dpy = tdm_display_init(&err);
-   if (err != TDM_ERROR_NONE)
+   g_eom->dpy = tdm_display_init(&ret);
+   if (ret != TDM_ERROR_NONE)
      {
-        EOM_DBG("failed initialize TDM\n");
+        EOM_ERR("tdm_display_init fail\n");
         goto err;
      }
 
-   err = tdm_display_get_fd(g_eom->dpy, &g_eom->fd);
-   if (err != TDM_ERROR_NONE)
+   ret = tdm_display_get_fd(g_eom->dpy, &g_eom->fd);
+   if (ret != TDM_ERROR_NONE)
      {
-        EOM_DBG("failed get FD\n");
+        EOM_ERR("tdm_display_get_fd fail\n");
         goto err;
      }
 
    g_eom->bufmgr = tbm_bufmgr_init(g_eom->fd);
    if (!g_eom->bufmgr)
      {
-        EOM_DBG("failed initialize buffer manager\n");
+        EOM_ERR("tbm_bufmgr_init fail\n");
         goto err;
      }
 
-   return 1;
+   if (_e_eom_output_info_get(g_eom->dpy) != EINA_TRUE)
+     {
+        EOM_ERR("_e_eom_output_info_get fail\n");
+        goto err;
+     }
+
+   return EINA_TRUE;
+
 err:
-   return 0;
+   if (g_eom->bufmgr)
+     tbm_bufmgr_deinit(g_eom->bufmgr);
+
+   if (g_eom->dpy)
+     tdm_display_deinit(g_eom->dpy);
+
+   return EINA_FALSE;
+
 }
 
 static Eina_Bool
 _e_eom_init()
 {
-   int ret = 0;
+   Eina_Bool ret = 0;
 
    EINA_SAFETY_ON_NULL_GOTO(e_comp_wl, err);
 
@@ -1237,7 +1419,7 @@ _e_eom_init()
    EINA_SAFETY_ON_NULL_GOTO(g_eom->global, err);
 
    ret = _e_eom_init_internal();
-   if (!ret)
+   if (ret == EINA_FALSE)
      {
         EOM_ERR("failed init_internal()");
         goto err;
