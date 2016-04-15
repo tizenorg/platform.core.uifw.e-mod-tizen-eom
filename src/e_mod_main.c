@@ -419,7 +419,8 @@ _e_eom_hal_output_get(const char *id)
     */
    EINA_LIST_FOREACH(ecore_drm_devices_get(), l, dev)
      {
-        EINA_LIST_FOREACH(dev->external_outputs, ll, o)
+/*        EINA_LIST_FOREACH(dev->external_outputs, ll, o)*/
+        EINA_LIST_FOREACH(dev->outputs, ll, o)
           {
              if ((ecore_drm_output_name_get(o)) && (strcmp(id, ecore_drm_output_name_get(o)) == 0))
                drm_output = o;
@@ -821,10 +822,10 @@ static Eina_Bool
 _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *event)
 {
    Ecore_Drm_Event_Output *e;
-   E_EomPtr eom = data;
+/*   E_EomPtr eom = data;*/
    E_Comp_Wl_Output *wl_output;
-   const Eina_List *l;
-   struct wl_resource *output_resource;
+/*   const Eina_List *l;*/
+/*   struct wl_resource *output_resource;*/
    enum wl_eom_type eom_type = WL_EOM_TYPE_NONE;
    char buff[PATH_MAX];
    int ret = 0;
@@ -934,7 +935,7 @@ _e_eom_set_output(Ecore_Drm_Output * drm_output, tbm_surface_h surface)
 {
    /* TODO: chack save and commit*/
 }
-
+#if 0
 static Ecore_Drm_Output *
 _e_eom_get_drm_output_for_client(E_Client *ec)
 {
@@ -952,7 +953,6 @@ _e_eom_get_drm_output_for_client(E_Client *ec)
 
    return NULL;
 }
-
 
 static tbm_surface_h
 _e_eom_get_tbm_surface_for_client(E_Client *ec)
@@ -988,7 +988,7 @@ _e_eom_canvas_render_post(void *data EINA_UNUSED, Evas *e EINA_UNUSED, void *eve
 
    _e_eom_set_output(drm_output, surface);
 }
-
+#endif
 static void
 _e_eom_fullscreen_pre_cb_hook(void *data, E_Client *ec)
 {
@@ -1109,11 +1109,9 @@ static void
 _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 {
    enum wl_eom_type eom_type = WL_EOM_TYPE_NONE;
-   struct wl_resource *output_resource;
    E_Comp_Wl_Output *wl_output = NULL;
    struct wl_resource *resource;
    E_EomPtr eom = data;
-   const Eina_List *l;
 
    resource = wl_resource_create(client,
                          &wl_eom_interface,
