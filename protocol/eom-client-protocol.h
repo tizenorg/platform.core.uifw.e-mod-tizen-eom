@@ -153,6 +153,35 @@ enum wl_eom_attribute_state {
  */
 struct wl_eom_listener {
 	/**
+	 * output_count - (none)
+	 * @count: (none)
+	 */
+	void (*output_count)(void *data,
+			    struct wl_eom *wl_eom,
+			    uint32_t count);
+	/**
+	 * output_info - (none)
+	 * @output_id: (none)
+	 * @type: (none)
+	 * @mode: (none)
+	 * @w: (none)
+	 * @h: (none)
+	 * @w_mm: (none)
+	 * @h_mm: (none)
+	 * @connection: (none)
+	 */
+	void (*output_info)(void *data,
+				struct wl_eom *wl_eom,
+				uint32_t output_id,
+				uint32_t type,
+				uint32_t mode,
+				uint32_t w,
+				uint32_t h,
+				uint32_t w_mm,
+				uint32_t h_mm,
+				uint32_t connection);
+
+	/**
 	 * output_type - (none)
 	 * @output_id: (none)
 	 * @type: (none)
@@ -196,6 +225,7 @@ wl_eom_add_listener(struct wl_eom *wl_eom,
 }
 
 #define WL_EOM_SET_ATTRIBUTE	0
+#define WL_EOM_GET_INFO			1
 
 #define WL_EOM_SET_ATTRIBUTE_SINCE_VERSION	1
 
@@ -228,6 +258,12 @@ wl_eom_set_attribute(struct wl_eom *wl_eom, uint32_t output_id, uint32_t attribu
 {
 	wl_proxy_marshal((struct wl_proxy *) wl_eom,
 			 WL_EOM_SET_ATTRIBUTE, output_id, attribute);
+}
+
+static inline void
+wl_eom_get_info(struct wl_eom *wl_eom, uint32_t output_id)
+{
+	wl_proxy_marshal((struct wl_proxy *) wl_eom, output_id);
 }
 
 #ifdef  __cplusplus
