@@ -159,15 +159,37 @@ struct wl_eom_interface {
 			      struct wl_resource *resource,
 			      uint32_t output_id,
 			      uint32_t attribute);
+	/**
+	 * get_output_info - (none)
+	 * @output_id: (none)
+	 */
+	void (*get_output_info)(struct wl_client *client,
+			      struct wl_resource *resource,
+			      uint32_t output_id);
 };
 
-#define WL_EOM_OUTPUT_TYPE	0
-#define WL_EOM_OUTPUT_MODE	1
-#define WL_EOM_OUTPUT_ATTRIBUTE	2
+#define WL_EOM_OUTPUT_COUNT	0
+#define WL_EOM_OUTPUT_INFO	1
+#define WL_EOM_OUTPUT_TYPE	2
+#define WL_EOM_OUTPUT_MODE	3
+#define WL_EOM_OUTPUT_ATTRIBUTE	4
 
 #define WL_EOM_OUTPUT_TYPE_SINCE_VERSION	1
 #define WL_EOM_OUTPUT_MODE_SINCE_VERSION	1
 #define WL_EOM_OUTPUT_ATTRIBUTE_SINCE_VERSION	1
+
+static inline void
+wl_eom_send_output_count(struct wl_resource *resource_, uint32_t output_id, uint32_t count)
+{
+	wl_resource_post_event(resource_, WL_EOM_OUTPUT_COUNT, output_id, count);
+}
+
+static inline void
+wl_eom_send_output_info(struct wl_resource *resource_, uint32_t output_id, uint32_t type, uint32_t mode,
+								uint32_t w, uint32_t h, uint32_t w_mm, uint32_t h_mm, uint32_t connection)
+{
+	wl_resource_post_event(resource_, WL_EOM_OUTPUT_INFO, output_id, type, mode, w, h, w_mm, h_mm, connection);
+}
 
 static inline void
 wl_eom_send_output_type(struct wl_resource *resource_, uint32_t output_id, uint32_t type, uint32_t status)
