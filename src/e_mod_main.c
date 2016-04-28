@@ -121,7 +121,7 @@ static enum wl_eom_type _e_eom_output_name_to_eom_type(const char *output_name);
 /* handle internal output, pp */
 static int _e_eom_root_internal_surface_get(const char *output_name, int width, int height);
 static tbm_surface_h _e_eom_root_internal_tdm_surface_get(const char *name);
-static int _e_eom_pp_src_to_dst( tbm_surface_h src_buffer);
+static int _e_eom_pp_src_to_dst(tbm_surface_h src_buffer);
 /* tdm handlers */
 static void _e_eom_pp_cb(tbm_surface_h surface, void *user_data);
 static void _e_eom_output_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUSED,
@@ -209,7 +209,7 @@ _e_eom_pp_cb(tbm_surface_h surface, void *user_data)
    src_buffer = _e_eom_root_internal_tdm_surface_get(g_eom->int_output_name);
    if (!src_buffer )
      {
-        EOM_DBG("ERROR: PP EVENT: get root tdm surfcae\n");
+        EOM_ERR("ERROR: PP EVENT: get root tdm surfcae\n");
         return;
      }
 
@@ -217,23 +217,23 @@ _e_eom_pp_cb(tbm_surface_h surface, void *user_data)
 
    tdm_err = tdm_buffer_add_release_handler(g_eom_data.dst_buffers[g_eom_data.pp_buffer],
                                             _e_eom_pp_cb, &g_eom_data);
-   if (tdm_err  != TDM_ERROR_NONE)
+   if (tdm_err != TDM_ERROR_NONE)
      {
-        EOM_DBG ("ERROR: PP EVENT: set pp hadler:%d\n", tdm_err );
+        EOM_ERR("ERROR: PP EVENT: set pp hadler:%d\n", tdm_err );
         return;
      }
 
    tdm_err = tdm_pp_attach(eom_data->pp, src_buffer, g_eom_data.dst_buffers[g_eom_data.pp_buffer]);
    if (tdm_err != TDM_ERROR_NONE)
      {
-        printf ("ERROR: pp attach:%d\n", tdm_err);
+        EOM_ERR("ERROR: pp attach:%d\n", tdm_err);
         return;
      }
 
    tdm_err  = tdm_pp_commit(g_eom_data.pp);
    if (tdm_err  != TDM_ERROR_NONE)
      {
-        EOM_DBG ("ERROR: PP EVENT: pp commit:%d\n", tdm_err );
+        EOM_ERR("ERROR: PP EVENT: pp commit:%d\n", tdm_err );
         return;
      }
 }
@@ -355,7 +355,7 @@ _e_eom_set_up_external_output(const char *output_name, int width, int height)
    tdm_err = tdm_layer_get_info(hal_layer, &layer_info);
    if (tdm_err != TDM_ERROR_NONE)
      {
-        EOM_ERR ("ERROR: get layer info: %d", tdm_err);
+        EOM_ERR("ERROR: get layer info: %d", tdm_err);
         goto err;
      }
 
@@ -382,17 +382,6 @@ _e_eom_set_up_external_output(const char *output_name, int width, int height)
         goto err;
      }
 
-   /* TODO: it is commented because we do not have HDMI events
-    * temprary commit moved to pp section
-    */
-   tdm_err = tdm_output_commit(hal_output, 0, _e_eom_output_commit_cb, eom_data);
-   if (tdm_err != TDM_ERROR_NONE)
-     {
-        EOM_ERR("ERROR: commit crtc:%d\n", tdm_err);
-        goto err;
-     }
-
-
    return 1;
 
 err:
@@ -418,7 +407,7 @@ _e_eom_deinit_external_output()
 
         err = tdm_output_commit(g_eom_data.output, 0, NULL, &g_eom_data);
         if (err != TDM_ERROR_NONE)
-          EOM_DBG ("EXT OUTPUT DEINIT: fail commit:%d\n", err);
+          EOM_DBG("EXT OUTPUT DEINIT: fail commit:%d\n", err);
         else
           EOM_DBG("EXT OUTPUT DEINIT: ok commit:%d\n", err);
 
@@ -453,8 +442,7 @@ _e_eom_hal_output_get(const char *id)
     */
    EINA_LIST_FOREACH(ecore_drm_devices_get(), l, dev)
      {
-/*        EINA_LIST_FOREACH(dev->external_outputs, ll, o)*/
-        EINA_LIST_FOREACH(dev->outputs, ll, o)
+        EINA_LIST_FOREACH(dev->external_outputs, ll, o)
           {
              if ((ecore_drm_output_name_get(o)) && (strcmp(id, ecore_drm_output_name_get(o)) == 0))
                drm_output = o;
@@ -625,7 +613,7 @@ _e_eom_create_output_buffers(E_EomDataPtr eom_data, int width, int height)
         goto err;
      }
 
-   memset(buffer_info.planes[0].ptr, 0xFF, buffer_info.planes[0].size);
+   memset(buffer_info.planes[0].ptr, 0x0, buffer_info.planes[0].size);
    tbm_surface_unmap(buffer);
 
    eom_data->dst_buffers[0] = buffer;
@@ -652,7 +640,7 @@ _e_eom_create_output_buffers(E_EomDataPtr eom_data, int width, int height)
         goto err;
      }
 
-   memset(buffer_info.planes[0].ptr, 0xFF, buffer_info.planes[0].size);
+   memset(buffer_info.planes[0].ptr, 0x0, buffer_info.planes[0].size);
    tbm_surface_unmap(buffer);
 
    eom_data->dst_buffers[1] = buffer;
@@ -703,11 +691,6 @@ _e_eom_root_internal_surface_get(const char *output_name, int width, int height)
            src_buffer_info.bpp,
            src_buffer_info.size);
 
-   g_eom->src_mode.w = width;
-   g_eom->src_mode.h = height;
-   /* TODO: free that memory */
-   g_eom->int_output_name = strdup(output_name);
-
    EOM_DBG("INT SURFACE: 1\n");
 
    ret = _e_eom_pp_src_to_dst(src_buffer);
@@ -735,43 +718,83 @@ _e_eom_root_internal_tdm_surface_get(const char *name)
    EINA_LIST_FOREACH(ecore_drm_devices_get(), l, dev)
      {
         primary_output = ecore_drm_device_output_name_find(dev, name);
+        if (primary_output)
+          break;
      }
 
    if (!primary_output)
      {
-         EOM_ERR("ERROR: get primary output\n");
-         return NULL;
+        EOM_ERR("ERROR: get primary output. (%s)\n", name);
+        return NULL;
      }
 
    /* I think it is more convenient than one upon, but E took first
     * output as primary and it can be not internal output
     *
-   primary_output = ecore_drm_output_primary_get();
+   EINA_LIST_FOREACH(ecore_drm_devices_get(), l, dev)
+     {
+        primary_output = ecore_drm_output_primary_get(dev);
+        if (primary_output)
+          break;
+     }
    if (!primary_output)
      {
-       EOM_ERR("ERROR: get primary output\n");
-       return NULL;
+        EOM_ERR("ERROR: get primary output(ecore_drm_output_primary_get)\n");
+        return NULL;
      }
    */
 
    fb = ecore_drm_display_output_primary_layer_fb_get(primary_output);
-   if (!primary_output)
+   if (!fb)
      {
-        EOM_ERR("ERROR: get primary frambuffer\n");
+        EOM_ERR("ERROR: get fb from primary_output\n");
         return NULL;
      }
 
-   /*EOM_DBG("FRAMEBUFFER ECORE_DRM: is_client:%d mode%dx%d\n", fb->from_client, fb->w, fb->h);*/
+   /* EOM_DBG("FRAMEBUFFER ECORE_DRM: is_client:%d mode%dx%d\n", fb->from_client, fb->w, fb->h); */
 
    return (tbm_surface_h)fb->hal_buffer;
 }
 
+static void
+_e_eom_calculate_fullsize(int src_h, int src_v, int dst_size_h, int dst_size_v,
+                             int *dst_x, int *dst_y, int *dst_w, int *dst_h)
+{
+   double h_ratio, v_ratio;
+
+   h_ratio = src_h / dst_size_h;
+   v_ratio = src_v / dst_size_v;
+
+   if (h_ratio == v_ratio)
+     {
+        *dst_x = 0;
+        *dst_y = 0;
+        *dst_w = dst_size_h;
+        *dst_h = dst_size_v;
+     }
+   else if (h_ratio < v_ratio)
+     {
+        *dst_y = 0;
+        *dst_h = dst_size_v;
+        *dst_w = dst_size_v * src_h / src_v;
+        *dst_x = (dst_size_h - *dst_w) / 2;
+     }
+   else /* (h_ratio > v_ratio) */
+     {
+        *dst_x = 0;
+        *dst_w = dst_size_h;
+        *dst_h = dst_size_h * src_h / src_v;
+        *dst_y = (dst_size_v - *dst_h) / 2;
+     }
+}
+
 static int
-_e_eom_pp_src_to_dst( tbm_surface_h src_buffer)
+_e_eom_pp_src_to_dst(tbm_surface_h src_buffer)
 {
    tdm_pp *pp;
    tdm_info_pp pp_info;
    tdm_error err = TDM_ERROR_NONE;
+   int x, y, w, h;
 
    EOM_DBG("PP: 1\n");
 
@@ -793,14 +816,22 @@ _e_eom_pp_src_to_dst( tbm_surface_h src_buffer)
    pp_info.src_config.pos.w = g_eom->src_mode.w; /*1440*/
    pp_info.src_config.pos.h = g_eom->src_mode.h; /*2560*/
    pp_info.src_config.format = TBM_FORMAT_ARGB8888;
-   pp_info.dst_config.size.h = g_eom->dst_mode.w; /*1960*/
+
+   /* TO DO : consider rotation */
+   _e_eom_calculate_fullsize(g_eom->src_mode.w, g_eom->src_mode.h,
+                             g_eom->dst_mode.w, g_eom->dst_mode.h,
+                             &x, &y, &w, &h);
+   EOM_DBG("x:%d, y:%d, w:%d, h:%d\n", x, y, w, h);
+   pp_info.dst_config.size.h = g_eom->dst_mode.w; /*1920*/
    pp_info.dst_config.size.v = g_eom->dst_mode.h; /*1080*/
-   pp_info.dst_config.pos.x = 0;
-   pp_info.dst_config.pos.y = 0;
-   pp_info.dst_config.pos.w = g_eom->dst_mode.w; /*1960*/
-   pp_info.dst_config.pos.h = g_eom->dst_mode.h; /*1080*/
+   pp_info.dst_config.pos.x = x;
+   pp_info.dst_config.pos.y = y;
+   pp_info.dst_config.pos.w = w;
+   pp_info.dst_config.pos.h = h;
    pp_info.dst_config.format = TBM_FORMAT_ARGB8888;
-   pp_info.transform = TDM_TRANSFORM_NORMAL;/*TDM_TRANSFORM_NORMAL*/
+
+   /* TO DO : get rotation */
+   pp_info.transform = TDM_TRANSFORM_NORMAL;
    pp_info.sync = 0;
    pp_info.flags = 0;
 
@@ -850,8 +881,6 @@ _e_eom_pp_src_to_dst( tbm_surface_h src_buffer)
    return 1;
 }
 
-static int flag = 0;
-
 static Eina_Bool
 _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *event)
 {
@@ -866,17 +895,28 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
 
    if (!(e = event)) goto end;
 
-   if (!e->plug) goto end;
-
    EOM_DBG("id:%d (x,y,w,h):(%d,%d,%d,%d) (w_mm,h_mm):(%d,%d) refresh:%d subpixel_order:%d transform:%d make:%s model:%s name:%s plug:%d\n",
          e->id, e->x, e->y, e->w, e->h, e->phys_width, e->phys_height, e->refresh, e->subpixel_order, e->transform, e->make, e->model, e->name, e->plug);
 
    snprintf(buff, sizeof(buff), "%s", e->name);
 
+   if (e->id == 0) /* main output */
+     {
+        g_eom->src_mode.w = e->w;
+        g_eom->src_mode.h = e->h;
+        /* TODO: free that memory */
+        if (!g_eom->int_output_name)
+          g_eom->int_output_name = strdup(buff);
+     }
+
    if (strcmp(e->name, "HDMI-A-0") == 0)
      {
        if (e->plug == 1)
          {
+            tdm_error tdm_err = TDM_ERROR_NONE;
+
+            _e_eom_set_eom_status(WL_EOM_STATUS_CONNECTION);
+
             /* Get e_comp_wl_output */
             wl_output = _e_eom_e_comp_wl_output_get(e_comp_wl->outputs, buff);
             if (!wl_output)
@@ -892,13 +932,31 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
                  EOM_ERR("ERROR: initialize external output\n");
                  goto end;
               }
-
             g_eom->is_external_init = 1;
             g_eom->id = e->id;
 
-            _e_eom_set_eom_attribute_state(WL_EOM_ATTRIBUTE_STATE_ACTIVE);
-            _e_eom_set_eom_status(WL_EOM_STATUS_CONNECTION);
-            _e_eom_set_eom_attribute(WL_EOM_ATTRIBUTE_NONE);
+            /* get main surface */
+            ret = _e_eom_root_internal_surface_get(g_eom->int_output_name, g_eom->src_mode.w, g_eom->src_mode.h);
+            if (!ret)
+              {
+                 EOM_ERR("ERROR: get root surfcae\n");
+                 goto end;
+              }
+
+            tdm_err = tdm_output_set_dpms(g_eom_data.output, TDM_OUTPUT_DPMS_ON);
+            if (tdm_err != TDM_ERROR_NONE)
+              {
+                 EOM_ERR("ERROR: tdm_output_set_dpms on\n");
+                 goto end;
+              }
+
+            tdm_err = tdm_output_commit(g_eom_data.output, 0, _e_eom_output_commit_cb, &g_eom_data);
+            if (tdm_err != TDM_ERROR_NONE)
+              {
+                 EOM_ERR("ERROR: commit crtc:%d\n", tdm_err);
+                 goto end;
+            }
+
             _e_eom_set_eom_mode(WL_EOM_MODE_MIRROR);
          }
        else
@@ -907,9 +965,7 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
             g_eom->is_internal_grab = 0;
             g_eom->id = -1;
 
-            _e_eom_set_eom_attribute_state(WL_EOM_ATTRIBUTE_STATE_INACTIVE);
             _e_eom_set_eom_status(WL_EOM_STATUS_DISCONNECTION);
-            _e_eom_set_eom_attribute(WL_EOM_ATTRIBUTE_NONE);
             _e_eom_set_eom_mode(WL_EOM_MODE_NONE);
 
             _e_eom_deinit_external_output();
@@ -947,18 +1003,6 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
           }
         */
      }
-   else if (strcmp(e->name, "DSI-0") == 0 && g_eom->is_external_init && flag == 2)
-     {
-        ret = _e_eom_root_internal_surface_get(buff, e->w, e->h);
-        if (!ret)
-          {
-             EOM_ERR("ERROR: get root surfcae\n");
-             goto end;
-          }
-     }
-
-   ++flag;
-
 end:
    return ECORE_CALLBACK_PASS_ON;
 }
@@ -1092,7 +1136,7 @@ static void
 _e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource *resource, uint32_t output_id, uint32_t attribute)
 {
    int ret = 0;
-	/*
+   /*
    (void) client;
    (void) attribute;
    */
@@ -1105,9 +1149,9 @@ _e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource 
    ret = _e_eom_set_eom_attribute(attribute);
    if (ret == 0)
      {
-	    EOM_DBG("set attribute FAILED\n");
+        EOM_DBG("set attribute FAILED\n");
 
-	    wl_eom_send_output_attribute(resource,
+        wl_eom_send_output_attribute(resource,
                                      g_eom->id,
                                      _e_eom_get_eom_attribute(),
                                      _e_eom_get_eom_attribute_state(),
@@ -1115,9 +1159,9 @@ _e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource 
      }
    else
      {
-	    EOM_DBG("set attribute OK\n");
+        EOM_DBG("set attribute OK\n");
 
-	    wl_eom_send_output_attribute(resource,
+        wl_eom_send_output_attribute(resource,
                                      g_eom->id,
                                      _e_eom_get_eom_attribute(),
                                      _e_eom_get_eom_attribute_state(),
@@ -1291,7 +1335,9 @@ _e_eom_output_info_get(tdm_display *dpy)
    g_eom->output_count = count - 1;
    EOM_DBG("external output count : %d\n", g_eom->output_count);
 
-   for (i = 0; i < count; i++)
+   /* skip main output id:0 */
+   /* start from 1 */
+   for (i = 1; i < count; i++)
      {
         tdm_output *output = NULL;
         E_EomOutputPtr new_output;
@@ -1319,10 +1365,6 @@ _e_eom_output_info_get(tdm_display *dpy)
              EOM_ERR("tdm_output_get_output_type fail(%d)", ret);
              goto err;
           }
-        /* skip main output */
-        /* TODO: need more check about main display*/
-        if ((type == TDM_OUTPUT_TYPE_DSI) || (type == TDM_OUTPUT_TYPE_LVDS))
-          continue;
 
         new_output = E_NEW(E_EomOutput, 1);
         if (!new_output)
