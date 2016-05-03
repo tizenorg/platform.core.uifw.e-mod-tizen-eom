@@ -857,7 +857,7 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
 {
    Ecore_Drm_Event_Output *e;
 /*   E_EomPtr eom = data;*/
-   E_Comp_Wl_Output *wl_output;
+   E_Comp_Wl_Output *wl_output = NULL;
 /*   const Eina_List *l;*/
 /*   struct wl_resource *output_resource;*/
    enum wl_eom_type eom_type = WL_EOM_TYPE_NONE;
