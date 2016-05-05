@@ -362,8 +362,6 @@ _e_eom_e_comp_wl_output_get(const Eina_List *outputs, const char *id)
         char *temp_id = NULL;
         temp_id = strchr(o->id, '/');
 
-        EOM_DBG("o->id=%s", o->id);
-
         if (temp_id == NULL)
           {
              if (strcmp(o->id, id) == 0)
@@ -778,6 +776,9 @@ static enum wl_eom_type
 _e_eom_output_name_to_eom_type(const char *output_name)
 {
    enum wl_eom_type eom_type;
+
+   if (output_name == NULL)
+	   return WL_EOM_TYPE_NONE;
 
    /* TODO: Add other external outputs */
    if (strcmp(output_name, "HDMI-A-0") == 0)
@@ -1200,7 +1201,6 @@ _e_eom_client_buffers_list_free()
     }
 }
 
-
 static E_EomClientBufferPtr
 _e_eom_create_client_buffer(E_Comp_Wl_Buffer *wl_buffer, tbm_surface_h tbm_buffer)
 {
@@ -1224,7 +1224,6 @@ _e_eom_create_client_buffer(E_Comp_Wl_Buffer *wl_buffer, tbm_surface_h tbm_buffe
    return buffer;
 }
 
-
 static E_EomClientBufferPtr
 _e_eom_get_client_buffer_from_list()
 {
@@ -1242,7 +1241,6 @@ _e_eom_get_client_buffer_from_list()
    return NULL;
 }
 
-
 static int
 _e_eom_get_time_in_mseconds()
 {
@@ -1252,7 +1250,6 @@ _e_eom_get_time_in_mseconds()
 
    return ((tp.tv_sec * 1000) + (tp.tv_nsec / 1000));
 }
-
 
 static Eina_Bool
 _e_eom_ecore_drm_activate_cb(void *data, int type EINA_UNUSED, void *event)
@@ -1283,13 +1280,10 @@ end:
    return ECORE_CALLBACK_PASS_ON;
 }
 
-
 static void
 _e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource *resource, uint32_t output_id, uint32_t attribute)
 {
    int ret = 0;
-
-   EOM_DBG("attribute:%d +++ output:%d\n", attribute, output_id);
 
    /* TODO: Add notifications when more prior client changes eom state */
    ret = _e_eom_set_eom_attribute(attribute);
@@ -1421,8 +1415,7 @@ _e_eom_wl_resource_destory_cb(struct wl_resource *resource)
 static void
 _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 {
-   /* enum wl_eom_type eom_type = WL_EOM_TYPE_NONE; */
-   /* E_Comp_Wl_Output *wl_output = NULL; */
+   enum wl_eom_type eom_type = WL_EOM_TYPE_NONE;
    struct wl_resource *resource;
    E_EomPtr eom = data;
 
@@ -1437,26 +1430,12 @@ _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32
         return;
      }
 
-
    wl_resource_set_implementation(resource,
                                   &_e_eom_wl_implementation,
                                   eom,
                                   _e_eom_wl_resource_destory_cb);
 
-#if 0
-   wl_output = _e_eom_e_comp_wl_output_get(e_comp_wl->outputs, g_eom->ext_output_name);
-   if (!wl_output)
-     {
-        EOM_DBG("failed to get wl_output\n");
-        return;
-     }
-
    eom_type = _e_eom_output_name_to_eom_type(g_eom->ext_output_name);
-   if (eom_type == WL_EOM_TYPE_NONE)
-     {
-        EOM_DBG("create wl_eom global resource.\n");
-        return;
-     }
 
    wl_eom_send_output_type(resource,
                            eom->id,
@@ -1472,7 +1451,7 @@ _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32
    wl_eom_send_output_mode(resource,
                            eom->id,
                            _e_eom_get_eom_mode());
-#else
+
    EOM_DBG("send - output count : %d\n", g_eom->output_count);
    wl_eom_send_output_count(resource,
                             g_eom->output_count);
@@ -1491,7 +1470,6 @@ _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32
                                      output->phys_width, output->phys_height, output->status);
           }
      }
-#endif
 
    g_eom->eom_clients = eina_list_append(g_eom->eom_clients, resource);
 }
@@ -1728,6 +1706,8 @@ _e_eom_init()
 
    g_eom->is_external_init = 0;
    g_eom->is_internal_grab = 0;
+   g_eom->ext_output_name = NULL;
+   g_eom->int_output_name = NULL;
 
    _e_eom_set_eom_attribute_state(WL_EOM_ATTRIBUTE_STATE_NONE);
    _e_eom_set_eom_attribute(WL_EOM_ATTRIBUTE_NONE);
