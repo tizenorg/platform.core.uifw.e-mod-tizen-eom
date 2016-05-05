@@ -10,7 +10,6 @@
 #include "eom-server-protocol.h"
 #include "Ecore_Drm.h"
 
-
 #define NUM_MAIN_BUF 2
 #define NUM_ATTR 3
 
@@ -58,7 +57,7 @@ struct _E_Eom_Output
 struct _E_Eom
 {
    struct wl_global *global;
-   struct wl_resource *resource;
+   Eina_List *eom_clients;
    Eina_List *handlers;
 
    tdm_display *dpy;
@@ -160,8 +159,6 @@ static E_EomClientBufferPtr _e_eom_get_client_buffer_from_list();
 
 /*eom utils functions*/
 static int _e_eom_get_time_in_mseconds();
-
-
 static void _e_eom_create_fake_buffers(int width, int height);
 
 static inline enum wl_eom_mode
@@ -245,11 +242,9 @@ _e_eom_pp_cb(tbm_surface_h surface, void *user_data)
    /* If a client has committed its buffer stop mirror mode */
    if (g_eom->is_mirror_mode == 0)
    {
-     EOM_DBG("PP STOP\n");
+      EOM_DBG("PP STOP\n");
       return;
    }
-
-   EOM_DBG("PP\n");
 
    tbm_surface_h src_buffer;
    src_buffer = _e_eom_root_internal_tdm_surface_get(g_eom->int_output_name);
@@ -304,8 +299,6 @@ _e_eom_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUS
    /* TODO: Maybe better to separating that callback on to mirror and extended callbacks */
    if (g_eom->is_mirror_mode == 1)
      {
-        EOM_ERR("MIRROR MODE\n");
-
         if (eom_data->current_buffer == 1)
          {
             eom_data->current_buffer = 0;
@@ -340,12 +333,7 @@ _e_eom_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUS
      }
    else
      {
-       EOM_DBG("EXTENDED MODE\n");
-
-       client_buffer = _e_eom_get_client_buffer_from_list();
-
-       EOM_DBG("EXTENDED MODE: client_buffer %p\n", client_buffer);
-
+        client_buffer = _e_eom_get_client_buffer_from_list();
         err = tdm_layer_set_buffer(eom_data->layer, client_buffer->tbm_buffer);
         if (err != TDM_ERROR_NONE)
           {
@@ -972,15 +960,12 @@ static int flag = 0;
 static Eina_Bool
 _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *event)
 {
-   Ecore_Drm_Event_Output *e;
-   /*
-   E_EomPtr eom = data;
-   const Eina_List *l;
-   struct wl_resource *output_resource;
-   */
-   E_Comp_Wl_Output *wl_output = NULL;
    enum wl_eom_type eom_type = WL_EOM_TYPE_NONE;
+   struct wl_resource *resource_iterator;
+   E_Comp_Wl_Output *wl_output = NULL;
+   Ecore_Drm_Event_Output *e;
    char buff[PATH_MAX];
+   Eina_List *l;
    int ret = 0;
 
    if (!(e = event)) goto end;
@@ -1043,28 +1028,26 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
 
         g_eom->wl_output = wl_output;
 
-        /*
-        EINA_LIST_FOREACH(wl_output->resources, l, output_resource)
+        EINA_LIST_FOREACH(g_eom->eom_clients, l, resource_iterator)
           {
+             if (resource_iterator)
+               {
+                  wl_eom_send_output_type(resource_iterator,
+                                          g_eom->id,
+                                          eom_type,
+                                          _e_eom_get_eom_status());
 
-             EOM_DBG("e->plug:%d\n", e->plug);
+                  wl_eom_send_output_attribute(resource_iterator,
+                                               g_eom->id,
+                                               _e_eom_get_eom_attribute(),
+                                               _e_eom_get_eom_attribute_state(),
+                                               WL_EOM_ERROR_NONE);
 
-             wl_eom_send_output_type(eom->resource,
-                                     output_resource,
-                                     eom_type,
-                                     _e_eom_get_eom_status());
-
-             wl_eom_send_output_attribute(eom->resource,
-                                          output_resource,
-                                          _e_eom_get_eom_attribute(),
-                                          _e_eom_get_eom_attribute_state(),
-                                          WL_EOM_ERROR_NONE);
-
-             wl_eom_send_output_mode(eom->resource,
-                                     output_resource,
-                                     _e_eom_get_eom_mode());
+                  wl_eom_send_output_mode(resource_iterator,
+                                          g_eom->id,
+                                          _e_eom_get_eom_mode());
+               }
           }
-        */
      }
    else if (strcmp(e->name, "DSI-0") == 0 && g_eom->is_external_init && flag == 2)
      {
@@ -1217,6 +1200,7 @@ _e_eom_client_buffers_list_free()
     }
 }
 
+
 static E_EomClientBufferPtr
 _e_eom_create_client_buffer(E_Comp_Wl_Buffer *wl_buffer, tbm_surface_h tbm_buffer)
 {
@@ -1240,6 +1224,7 @@ _e_eom_create_client_buffer(E_Comp_Wl_Buffer *wl_buffer, tbm_surface_h tbm_buffe
    return buffer;
 }
 
+
 static E_EomClientBufferPtr
 _e_eom_get_client_buffer_from_list()
 {
@@ -1257,6 +1242,7 @@ _e_eom_get_client_buffer_from_list()
    return NULL;
 }
 
+
 static int
 _e_eom_get_time_in_mseconds()
 {
@@ -1266,6 +1252,7 @@ _e_eom_get_time_in_mseconds()
 
    return ((tp.tv_sec * 1000) + (tp.tv_nsec / 1000));
 }
+
 
 static Eina_Bool
 _e_eom_ecore_drm_activate_cb(void *data, int type EINA_UNUSED, void *event)
@@ -1296,7 +1283,7 @@ end:
    return ECORE_CALLBACK_PASS_ON;
 }
 
-/* wl_eom_set_keygrab request handler */
+
 static void
 _e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource *resource, uint32_t output_id, uint32_t attribute)
 {
@@ -1304,6 +1291,7 @@ _e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource 
 
    EOM_DBG("attribute:%d +++ output:%d\n", attribute, output_id);
 
+   /* TODO: Add notifications when more prior client changes eom state */
    ret = _e_eom_set_eom_attribute(attribute);
    if (ret == 0)
      {
@@ -1383,7 +1371,10 @@ static const struct wl_eom_interface _e_eom_wl_implementation =
 static void
 _e_eom_wl_resource_destory_cb(struct wl_resource *resource)
 {
+   struct wl_resource *resource_iterator;
+   Eina_List *l;
    int ret;
+
    EOM_DBG("client unbind\n");
 
    ret = _e_eom_set_eom_attribute(WL_EOM_ATTRIBUTE_NONE);
@@ -1402,19 +1393,28 @@ _e_eom_wl_resource_destory_cb(struct wl_resource *resource)
         _e_eom_client_buffers_list_free();
 
         ret = _e_eom_mirror_start(g_eom->int_output_name,
-                                        g_eom->src_mode.w,
-                                        g_eom->src_mode.h);
+                                  g_eom->src_mode.w,
+                                  g_eom->src_mode.h);
         if (!ret)
           {
              EOM_ERR("ERROR: restore mirror mode after a client disconnection\n");
-             goto err;
+             return;
+          }
+
+        /* Notify eom clients that eom state has been changed */
+        EINA_LIST_FOREACH(g_eom->eom_clients, l, resource_iterator)
+          {
+             if (resource_iterator)
+               {
+                  wl_eom_send_output_attribute(resource_iterator,
+                                               g_eom->id,
+                                               _e_eom_get_eom_attribute(),
+                                               _e_eom_get_eom_attribute_state(),
+                                               WL_EOM_ERROR_NONE);
+               }
+
           }
      }
-
-   /*TODO: notify clients that EOM has just changed status*/
-
-err:
-   return;
 }
 
 /* wl_eom global object bind function */
@@ -1443,11 +1443,6 @@ _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32
                                   eom,
                                   _e_eom_wl_resource_destory_cb);
 
-   /*TODO: We have to store all clients in list to make it possible to send
-    * events when a client free external output or has been destroyed
-    */
-   eom->resource = resource;
-
 #if 0
    wl_output = _e_eom_e_comp_wl_output_get(e_comp_wl->outputs, g_eom->ext_output_name);
    if (!wl_output)
@@ -1463,23 +1458,23 @@ _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32
         return;
      }
 
-   wl_eom_send_output_type(eom->resource,
+   wl_eom_send_output_type(resource,
                            eom->id,
                            eom_type,
                            _e_eom_get_eom_status());
 
-   wl_eom_send_output_attribute(eom->resource,
+   wl_eom_send_output_attribute(resource,
                                 eom->id,
                                 _e_eom_get_eom_attribute(),
                                 _e_eom_get_eom_attribute_state(),
                                 WL_EOM_ERROR_NONE);
 
-   wl_eom_send_output_mode(eom->resource,
+   wl_eom_send_output_mode(resource,
                            eom->id,
                            _e_eom_get_eom_mode());
 #else
    EOM_DBG("send - output count : %d\n", g_eom->output_count);
-   wl_eom_send_output_count(eom->resource,
+   wl_eom_send_output_count(resource,
                             g_eom->output_count);
 
    if (g_eom->outputs)
@@ -1498,7 +1493,7 @@ _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32
      }
 #endif
 
-   EOM_DBG("create wl_eom global resource.\n");
+   g_eom->eom_clients = eina_list_append(g_eom->eom_clients, resource);
 }
 
 static void
