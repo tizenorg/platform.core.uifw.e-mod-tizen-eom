@@ -1,18 +1,20 @@
 #define E_COMP_WL
-#include "e.h"
-#include "e_mod_main.h"
-#include "eom-server-protocol.h"
-#include <Eina.h>
-#include <Ecore.h>
-#include <Evas.h>
-#include "Ecore_Drm.h"
+
+#include <tdm.h>
+#include <eom.h>
 #include <Ecore_Evas.h>
 #include <Evas_Engine_Drm.h>
 #include <tbm_bufmgr.h>
 #include <tbm_surface.h>
+#include <Eina.h>
+#include <Ecore.h>
+#include <Evas.h>
 
-#include <tdm.h>
-#include <eom.h>
+#include "e.h"
+#include "e_mod_main.h"
+#include "eom-server-protocol.h"
+#include "Ecore_Drm.h"
+
 
 #define NUM_MAIN_BUF 2
 #define NUM_ATTR 3
