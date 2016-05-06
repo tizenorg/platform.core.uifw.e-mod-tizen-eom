@@ -135,15 +135,15 @@ static int eom_output_attributes[NUM_ATTR][NUM_ATTR] =
 
 /* handle external output */
 static E_Comp_Wl_Output *_e_eom_e_comp_wl_output_get(const Eina_List *outputs, const char *id);
-static int _e_eom_set_up_external_output(const char *output_name, int width, int height);
+static Eina_Bool _e_eom_set_up_external_output(const char *output_name, int width, int height);
 static tdm_output * _e_eom_hal_output_get(const char *id);
 static tdm_layer * _e_eom_hal_layer_get(tdm_output *output, int width, int height);
-static int _e_eom_create_output_buffers(E_EomEventDataPtr eom_data, int width, int height);
+static Eina_Bool _e_eom_create_output_buffers(E_EomEventDataPtr eom_data, int width, int height);
 static enum wl_eom_type _e_eom_output_name_to_eom_type(const char *output_name);
 /* handle internal output, pp */
-static int _e_eom_mirror_start(const char *output_name, int width, int height);
+static Eina_Bool _e_eom_mirror_start(const char *output_name, int width, int height);
 static tbm_surface_h _e_eom_root_internal_tdm_surface_get(const char *name);
-static int _e_eom_pp_src_to_dst( tbm_surface_h src_buffer);
+static Eina_Bool _e_eom_pp_src_to_dst( tbm_surface_h src_buffer);
 /* tdm handlers */
 static void _e_eom_pp_cb(tbm_surface_h surface, void *user_data);
 static void _e_eom_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUSED,
@@ -191,22 +191,22 @@ _e_eom_get_eom_attribute()
    return g_eom->eom_attribute;
 }
 
-static inline int
+static inline Eina_Bool
 _e_eom_set_eom_attribute(enum wl_eom_attribute attribute)
 {
    if (attribute == WL_EOM_ATTRIBUTE_NONE || g_eom->eom_attribute == WL_EOM_ATTRIBUTE_NONE)
      {
         g_eom->eom_attribute = attribute;
-        return 1;
+        return EINA_TRUE;
      }
 
    if (eom_output_attributes[g_eom->eom_attribute - 1][attribute - 1] == 1)
      {
         g_eom->eom_attribute = attribute;
-        return 1;
+        return EINA_TRUE;
      }
 
-   return 0;
+   return EINA_FALSE;
 }
 
 static inline enum wl_eom_status
@@ -224,10 +224,10 @@ _e_eom_set_eom_status(enum wl_eom_status status)
 static void
 _e_eom_pp_cb(tbm_surface_h surface, void *user_data)
 {
-   E_EomEventDataPtr eom_data = NULL;
    tdm_error tdm_err = TDM_ERROR_NONE;
+   E_EomEventDataPtr eom_data = NULL;
 
-   if (!user_data)
+   if (user_data == NULL)
      {
         EOM_DBG("ERROR: PP EVENT: user data is NULL\n");
         return;
@@ -236,19 +236,16 @@ _e_eom_pp_cb(tbm_surface_h surface, void *user_data)
    eom_data = (E_EomEventDataPtr)user_data;
 
    tdm_buffer_remove_release_handler(eom_data->dst_buffers[eom_data->pp_buffer],
-                                        _e_eom_pp_cb, eom_data);
+                                     _e_eom_pp_cb, eom_data);
 
    /* TODO: lock that flag??? */
    /* If a client has committed its buffer stop mirror mode */
    if (g_eom->is_mirror_mode == 0)
-   {
-      EOM_DBG("PP STOP\n");
-      return;
-   }
+        return;
 
    tbm_surface_h src_buffer;
    src_buffer = _e_eom_root_internal_tdm_surface_get(g_eom->int_output_name);
-   if (!src_buffer )
+   if (src_buffer == EINA_FALSE)
      {
         EOM_DBG("ERROR: PP EVENT: get root tdm surfcae\n");
         return;
@@ -284,11 +281,11 @@ _e_eom_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUS
                            unsigned int tv_sec EINA_UNUSED, unsigned int tv_usec EINA_UNUSED,
                            void *user_data)
 {
-   E_EomEventDataPtr eom_data;
-   E_EomClientBufferPtr client_buffer;
+   E_EomClientBufferPtr client_buffer = NULL;
+   E_EomEventDataPtr eom_data = NULL;
    tdm_error err = TDM_ERROR_NONE;
 
-   if (!user_data)
+   if (user_data == NULL)
      {
         EOM_ERR("ERROR: EVENT: user_data is NULL\n");
         return;
@@ -334,6 +331,12 @@ _e_eom_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUS
    else
      {
         client_buffer = _e_eom_get_client_buffer_from_list();
+        if (client_buffer == NULL)
+          {
+             EOM_ERR("ERROR: EVENT: client buffer is NULL\n");
+             return;
+          }
+
         err = tdm_layer_set_buffer(eom_data->layer, client_buffer->tbm_buffer);
         if (err != TDM_ERROR_NONE)
           {
@@ -353,8 +356,8 @@ _e_eom_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUS
 static E_Comp_Wl_Output *
 _e_eom_e_comp_wl_output_get(const Eina_List *outputs, const char *id)
 {
+   E_Comp_Wl_Output *output = NULL, *o = NULL;
    const Eina_List *l;
-   E_Comp_Wl_Output *output = NULL, *o;
    int loc = 0;
 
    if (id == NULL)
@@ -384,32 +387,34 @@ _e_eom_e_comp_wl_output_get(const Eina_List *outputs, const char *id)
    return output;
 }
 
-static int
+static Eina_Bool
 _e_eom_set_up_external_output(const char *output_name, int width, int height)
 {
-   tdm_output *hal_output;
-   tdm_layer *hal_layer;
-   tdm_info_layer layer_info;
    tdm_error tdm_err = TDM_ERROR_NONE;
-   E_EomEventDataPtr eom_data = &g_eom_event_data;
-   int ret = 0;
+   E_EomEventDataPtr eom_data = NULL;
+   tdm_output *hal_output = NULL;
+   tdm_layer *hal_layer = NULL;
+   Eina_Bool ret = EINA_FALSE;
+   tdm_info_layer layer_info;
+
+   eom_data = &g_eom_event_data;
 
    hal_output = _e_eom_hal_output_get(output_name);
-   if (!hal_output)
+   if (hal_output == NULL)
      {
         EOM_ERR("ERROR: get hal output for, (%s)\n", output_name);
         goto err;
      }
 
    hal_layer = _e_eom_hal_layer_get(hal_output, width, height);
-   if (!hal_layer)
+   if (hal_layer == NULL)
      {
         EOM_ERR("ERROR: get hal layer\n");
         goto err;
      }
 
    ret = _e_eom_create_output_buffers(eom_data, width, height);
-   if (!ret )
+   if (ret == EINA_FALSE)
      {
         EOM_ERR("ERROR: create buffers \n");
         goto err;
@@ -462,14 +467,13 @@ _e_eom_set_up_external_output(const char *output_name, int width, int height)
         goto err;
      }
 
-
-   return 1;
+   return EINA_TRUE;
 
 err:
 /*
  * TODO: add deinitialization
  */
-   return 0;
+   return EINA_FALSE;
 }
 
 static void
@@ -506,6 +510,18 @@ _e_eom_deinit_external_output()
           }
     }
 
+   if (g_eom->int_output_name)
+     {
+        free(g_eom->int_output_name);
+        g_eom->int_output_name = NULL;
+     }
+
+   if (g_eom->ext_output_name)
+    {
+	   free(g_eom->ext_output_name);
+	   g_eom->ext_output_name = NULL;
+	}
+
    if (g_eom->wl_output)
       g_eom->wl_output = NULL;
 }
@@ -513,15 +529,16 @@ _e_eom_deinit_external_output()
 static tdm_output *
 _e_eom_hal_output_get(const char *id)
 {
-   Ecore_Drm_Device *dev;
-   Ecore_Drm_Output *drm_output = NULL, *o;
-   tdm_output *output;
-   const tdm_output_mode *modes;
-   const tdm_output_mode *big_mode;
+   Ecore_Drm_Output *drm_output = NULL, *o = NULL;
+   const tdm_output_mode *big_mode = NULL;
+   const tdm_output_mode *modes = NULL;
+   Ecore_Drm_Device *dev = NULL;
+   tdm_output *output = NULL;
    tdm_error err = TDM_ERROR_NONE;
    const Eina_List *l, *ll;
    int crtc_id = 0;
    int count = 0;
+   int i = 0;
 
    /*
     * TODO: Temporary take into account only HDMI
@@ -536,7 +553,7 @@ _e_eom_hal_output_get(const char *id)
           }
      }
 
-   if (!drm_output)
+   if (drm_output == NULL)
      {
         EOM_ERR("ERROR: drm output was not found\n");
         return NULL;
@@ -550,7 +567,7 @@ _e_eom_hal_output_get(const char *id)
     }
 
    output = tdm_display_get_output(g_eom->dpy, crtc_id, NULL);
-   if (!output)
+   if (output == NULL)
      {
         EOM_ERR("ERROR: there is no HAL output for:%d\n", crtc_id);
         return NULL;
@@ -579,15 +596,14 @@ _e_eom_hal_output_get(const char *id)
 
    big_mode = &modes[0];
 
-   int i = 0;
    for (i = 0; i < count; i++)
      {
-        if ((modes[i].vdisplay + modes[i].hdisplay) >= (big_mode->vdisplay + big_mode->hdisplay))
+        if ((modes[i].vdisplay + modes[i].hdisplay) >=
+            (big_mode->vdisplay + big_mode->hdisplay))
           big_mode = &modes[i];
      }
 
-   /*TODO: fix it*/
-   if (!big_mode)
+   if (big_mode == NULL)
      {
         EOM_ERR("no Big mode\n");
         return NULL;
@@ -676,11 +692,11 @@ _e_eom_hal_layer_get(tdm_output *output, int width, int height)
 static void
 _e_eom_create_fake_buffers(int width, int height)
 {
-   tbm_surface_h buffer;
    tbm_surface_info_s buffer_info;
+   tbm_surface_h buffer = NULL;
 
    buffer = tbm_surface_internal_create_with_flags(width, height, TBM_FORMAT_ARGB8888, TBM_BO_SCANOUT);
-   if (!buffer)
+   if (buffer == NULL)
      {
         EOM_DBG("can not create fake_buffer\n");
         goto err;
@@ -704,17 +720,17 @@ err:
    return;
 }
 
-static int
+static Eina_Bool
 _e_eom_create_output_buffers(E_EomEventDataPtr eom_data, int width, int height)
 {
-   tbm_surface_h buffer;
    tbm_surface_info_s buffer_info;
+   tbm_surface_h buffer = NULL;
 
    /*
     * TODO: Add support of other formats
     */
    buffer = tbm_surface_internal_create_with_flags(width, height, TBM_FORMAT_ARGB8888, TBM_BO_SCANOUT);
-   if (!buffer)
+   if (buffer == NULL)
      {
         EOM_DBG("can not create dst_buffer\n");
         goto err;
@@ -742,7 +758,7 @@ _e_eom_create_output_buffers(E_EomEventDataPtr eom_data, int width, int height)
     * TODO: Add support of other formats
     */
    buffer = tbm_surface_internal_create_with_flags(width, height, TBM_FORMAT_ARGB8888, TBM_BO_SCANOUT);
-   if (!buffer)
+   if (buffer == NULL)
      {
         EOM_DBG("can not create dst_buffer\n");
         goto err;
@@ -765,14 +781,14 @@ _e_eom_create_output_buffers(E_EomEventDataPtr eom_data, int width, int height)
 
    eom_data->dst_buffers[1] = buffer;
 
-   return 1;
+   return EINA_TRUE;
 
 err:
 
 /*
  * Add deinitialization
  */
-   return 0;
+   return EINA_FALSE;
 }
 
 static enum wl_eom_type
@@ -792,15 +808,15 @@ _e_eom_output_name_to_eom_type(const char *output_name)
    return eom_type;
 }
 
-static int
+static Eina_Bool
 _e_eom_mirror_start(const char *output_name, int width, int height)
 {
-   tbm_surface_h src_buffer;
    tbm_surface_info_s src_buffer_info;
-   int ret = 0;
+   tbm_surface_h src_buffer = NULL;
+   Eina_Bool ret = EINA_FALSE;
 
    src_buffer = _e_eom_root_internal_tdm_surface_get(output_name);
-   if (!src_buffer )
+   if (src_buffer == NULL)
      {
         EOM_ERR("ERROR: get root tdm surfcae\n");
         return 0;
@@ -809,28 +825,22 @@ _e_eom_mirror_start(const char *output_name, int width, int height)
    tbm_surface_get_info(src_buffer, &src_buffer_info );
 
    EOM_DBG("FRAMEBUFFER TDM: %dx%d   bpp:%d   size:%d",
-           src_buffer_info.width,
-           src_buffer_info.height,
-           src_buffer_info.bpp,
-           src_buffer_info.size);
+           src_buffer_info.width, src_buffer_info.height,
+           src_buffer_info.bpp, src_buffer_info.size);
 
    g_eom->src_mode.w = width;
    g_eom->src_mode.h = height;
    /* TODO: free that memory */
    g_eom->int_output_name = strdup(output_name);
 
-   EOM_DBG("INT SURFACE: 1\n");
-
    ret = _e_eom_pp_src_to_dst(src_buffer);
-   if (!ret )
+   if (ret == EINA_FALSE)
      {
         EOM_ERR("ERROR: init pp\n");
-        return 0;
+        return ret == EINA_FALSE;
      }
 
-   EOM_DBG("INT SURFACE: 2\n");
-
-   return 1;
+   return EINA_TRUE;
 }
 
 static tbm_surface_h
@@ -846,10 +856,10 @@ _e_eom_root_internal_tdm_surface_get(const char *name)
         primary_output = ecore_drm_device_output_name_find(dev, name);
      }
 
-   if (!primary_output)
+   if (primary_output == NULL)
      {
-         EOM_ERR("ERROR: get primary output\n");
-         return NULL;
+        EOM_ERR("ERROR: get primary output\n");
+        return NULL;
      }
 
    /* I think it is more convenient than one upon, but E took first
@@ -864,7 +874,7 @@ _e_eom_root_internal_tdm_surface_get(const char *name)
    */
 
    fb = ecore_drm_display_output_primary_layer_fb_get(primary_output);
-   if (!primary_output)
+   if (primary_output == NULL)
      {
         EOM_ERR("ERROR: get primary frambuffer\n");
         return NULL;
@@ -875,14 +885,12 @@ _e_eom_root_internal_tdm_surface_get(const char *name)
    return (tbm_surface_h)fb->hal_buffer;
 }
 
-static int
+static Eina_Bool
 _e_eom_pp_src_to_dst( tbm_surface_h src_buffer)
 {
-   tdm_pp *pp;
-   tdm_info_pp pp_info;
    tdm_error err = TDM_ERROR_NONE;
-
-   EOM_DBG("PP: 1\n");
+   tdm_info_pp pp_info;
+   tdm_pp *pp = NULL;
 
    pp = tdm_display_create_pp(g_eom->dpy, &err);
    if (err != TDM_ERROR_NONE)
@@ -890,8 +898,6 @@ _e_eom_pp_src_to_dst( tbm_surface_h src_buffer)
         EOM_ERR("ERROR: create pp:%d\n", err);
         return 0;
      }
-
-   EOM_DBG("PP: 2\n");
 
    g_eom_event_data.pp = pp;
 
@@ -913,50 +919,42 @@ _e_eom_pp_src_to_dst( tbm_surface_h src_buffer)
    pp_info.sync = 0;
    pp_info.flags = 0;
 
-   EOM_DBG("PP: 3\n");
-
    err = tdm_pp_set_info(pp, &pp_info);
    if (err != TDM_ERROR_NONE)
      {
         EOM_ERR("ERROR: set pp info:%d\n", err);
-        return 0;
+        return EINA_FALSE;
      }
 
-   EOM_DBG("PP: 4\n");
-
    g_eom_event_data.pp_buffer = !g_eom_event_data.current_buffer;
-   EOM_DBG("PP: curr:%d  pp:%d\n", g_eom_event_data.current_buffer, g_eom_event_data.pp_buffer);
+   EOM_DBG("PP: curr:%d  pp:%d\n",
+		   g_eom_event_data.current_buffer,
+		   g_eom_event_data.pp_buffer);
 
    err = tdm_buffer_add_release_handler(g_eom_event_data.dst_buffers[g_eom_event_data.pp_buffer],
                                       _e_eom_pp_cb, &g_eom_event_data);
    if (err != TDM_ERROR_NONE)
      {
         EOM_ERR ("ERROR: set pp hadler:%d\n", err);
-        return 0;
+        return EINA_FALSE;
      }
 
-   EOM_DBG("PP: 5\n");
-
-   err = tdm_pp_attach(pp, src_buffer, g_eom_event_data.dst_buffers[g_eom_event_data.pp_buffer]);
+   err = tdm_pp_attach(pp, src_buffer,
+		               g_eom_event_data.dst_buffers[g_eom_event_data.pp_buffer]);
    if (err != TDM_ERROR_NONE)
      {
         EOM_ERR("ERROR: pp attach:%d\n", err);
-        return 0;
+        return EINA_FALSE;
      }
-
-
-   EOM_DBG("PP: 6\n");
 
    err = tdm_pp_commit(g_eom_event_data.pp);
    if (err != TDM_ERROR_NONE)
      {
         EOM_ERR("ERROR: pp commit:%d\n", err);
-        return 0;
+        return EINA_FALSE;
      }
 
-   EOM_DBG("PP: OK\n");
-
-   return 1;
+   return EINA_TRUE;
 }
 
 static int flag = 0;
@@ -1003,6 +1001,7 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
 
             g_eom->is_external_init = 1;
             g_eom->id = e->id;
+            g_eom->wl_output = wl_output;
 
             _e_eom_set_eom_attribute_state(WL_EOM_ATTRIBUTE_STATE_ACTIVE);
             _e_eom_set_eom_status(WL_EOM_STATUS_CONNECTION);
@@ -1013,6 +1012,7 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
          {
             g_eom->is_external_init = 0;
             g_eom->is_internal_grab = 0;
+            g_eom->wl_output = NULL;
             g_eom->id = -1;
 
             _e_eom_set_eom_attribute_state(WL_EOM_ATTRIBUTE_STATE_INACTIVE);
@@ -1029,8 +1029,6 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
              EOM_ERR("ERROR: eom_type is NONE\n");
              goto end;
           }
-
-        g_eom->wl_output = wl_output;
 
         EINA_LIST_FOREACH(g_eom->eom_clients, l, resource_iterator)
           {
@@ -1076,12 +1074,12 @@ end:
 static Eina_Bool
 _e_eom_client_buffer_change(void *data, int type, void *event)
 {
-   E_Client *ec;
+   E_Comp_Wl_Buffer *external_wl_buffer = NULL;
+   E_EomClientBufferPtr client_buffer = NULL;
    E_Event_Client *ev = event;
-   E_Comp_Wl_Buffer *external_wl_buffer;
-   E_EomClientBufferPtr client_buffer;
+   E_Client *ec = NULL;
    /*
-   tbm_surface_h external_tbm_buffer;
+   tbm_surface_h external_tbm_buffer = NULL;
    tbm_surface_info_s surface_info;
    int ret;
    */
@@ -1159,7 +1157,7 @@ _e_eom_client_buffer_change(void *data, int type, void *event)
    /* TODO: Must find proper way of getting tbm_surface */
    /*client_buffer = _e_eom_create_client_buffer(external_wl_buffer, external_tbm_buffer);*/
    client_buffer = _e_eom_create_client_buffer(external_wl_buffer, fake_buffers.fake_buffers[0]);
-   if(client_buffer == NULL)
+   if (client_buffer == NULL)
      {
        EOM_ERR("ERROR: BUFF CHANGE: alloc client buffer");
        return ECORE_CALLBACK_PASS_ON;
@@ -1184,7 +1182,7 @@ _e_eom_add_client_buffer_to_list(E_EomClientBufferPtr client_buffer)
 static void
 _e_eom_client_buffers_list_free()
 {
-   E_EomClientBufferPtr *buffer;
+   E_EomClientBufferPtr *buffer = NULL;
    Eina_List *l;
 
    /* TODO: I am not sure if it is thread safe */
@@ -1230,7 +1228,7 @@ _e_eom_create_client_buffer(E_Comp_Wl_Buffer *wl_buffer, tbm_surface_h tbm_buffe
 static E_EomClientBufferPtr
 _e_eom_get_client_buffer_from_list()
 {
-   E_EomClientBufferPtr buffer;
+   E_EomClientBufferPtr buffer = NULL;
    Eina_List *l;
 
    /* TODO: Have to describe how that list works*/
@@ -1286,11 +1284,11 @@ end:
 static void
 _e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource *resource, uint32_t output_id, uint32_t attribute)
 {
-   int ret = 0;
+   Eina_Bool ret = EINA_FALSE;
 
    /* TODO: Add notifications when more prior client changes eom state */
    ret = _e_eom_set_eom_attribute(attribute);
-   if (ret == 0)
+   if (ret == EINA_FALSE)
      {
         EOM_DBG("set attribute FAILED\n");
 
@@ -1322,7 +1320,7 @@ _e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource 
              ret = _e_eom_mirror_start(g_eom->int_output_name,
                                              g_eom->src_mode.w,
                                              g_eom->src_mode.h);
-             if (!ret)
+             if (ret == EINA_FALSE)
                {
                   EOM_ERR("ERROR: restore mirror mode after a client disconnection\n");
                   goto err;
@@ -1342,7 +1340,7 @@ _e_eom_wl_request_get_output_info_cb(struct wl_client *client, struct wl_resourc
    if (g_eom->outputs)
      {
         Eina_List *l;
-        E_EomOutputPtr output;
+        E_EomOutputPtr output = NULL;
 
         EINA_LIST_FOREACH(g_eom->outputs, l, output)
           {
@@ -1368,14 +1366,14 @@ static const struct wl_eom_interface _e_eom_wl_implementation =
 static void
 _e_eom_wl_resource_destory_cb(struct wl_resource *resource)
 {
-   struct wl_resource *resource_iterator;
-   Eina_List *l;
-   int ret;
+   struct wl_resource *resource_iterator = NULL;
+   Eina_List *l = NULL;
+   Eina_Bool ret;
 
    EOM_DBG("client unbind\n");
 
    ret = _e_eom_set_eom_attribute(WL_EOM_ATTRIBUTE_NONE);
-   if (ret != 1)
+   if (ret == EINA_FALSE)
      EOM_DBG("Restore attribute: Failed\n");
    else
      EOM_DBG("Restore attribute: OK\n");
@@ -1392,7 +1390,7 @@ _e_eom_wl_resource_destory_cb(struct wl_resource *resource)
         ret = _e_eom_mirror_start(g_eom->int_output_name,
                                   g_eom->src_mode.w,
                                   g_eom->src_mode.h);
-        if (!ret)
+        if (ret == EINA_FALSE)
           {
              EOM_ERR("ERROR: restore mirror mode after a client disconnection\n");
              return;
@@ -1419,14 +1417,21 @@ static void
 _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 {
    enum wl_eom_type eom_type = WL_EOM_TYPE_NONE;
-   struct wl_resource *resource;
+   struct wl_resource *resource = NULL;
+
+   if (data == NULL)
+     {
+	    EOM_ERR("ERROR: data is NULL");
+	    return;
+     }
+
    E_EomPtr eom = data;
 
    resource = wl_resource_create(client,
                          &wl_eom_interface,
                          MIN(version, 1),
                          id);
-   if (!resource)
+   if (resource == NULL)
      {
         EOM_ERR("error. resource is null. (version :%d, id:%d)\n", version, id);
         wl_client_post_no_memory(client);
@@ -1462,7 +1467,7 @@ _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32
    if (g_eom->outputs)
      {
         Eina_List *l;
-        E_EomOutputPtr output;
+        E_EomOutputPtr output = NULL;
 
         EINA_LIST_FOREACH(g_eom->outputs, l, output)
           {
@@ -1480,9 +1485,9 @@ _e_eom_wl_bind_cb(struct wl_client *client, void *data, uint32_t version, uint32
 static void
 _e_eom_deinit()
 {
-   Ecore_Event_Handler *h;
+   Ecore_Event_Handler *h = NULL;
 
-   if (!g_eom) return;
+   if (g_eom == NULL) return;
 
    if (g_eom->handlers)
      {
@@ -1501,8 +1506,9 @@ _e_eom_deinit()
 static Eina_Bool
 _e_eom_output_info_get(tdm_display *dpy)
 {
-   int i, count;
    tdm_error ret = TDM_ERROR_NONE;
+   int i, count;
+
 
    ret = tdm_display_get_output_count(dpy, &count);
    if (ret != TDM_ERROR_NONE)
@@ -1522,12 +1528,12 @@ _e_eom_output_info_get(tdm_display *dpy)
 
    for (i = 0; i < count; i++)
      {
-        tdm_output *output = NULL;
-        E_EomOutputPtr new_output;
-        tdm_output_type type;
-        tdm_output_conn_status status;
+	    const tdm_output_mode *mode = NULL;
+	    E_EomOutputPtr new_output = NULL;
         unsigned int mmWidth, mmHeight;
-        const tdm_output_mode *mode;
+        tdm_output_conn_status status;
+        tdm_output *output = NULL;
+        tdm_output_type type;
 
         output = tdm_display_get_output(dpy, i, &ret);
         if (ret != TDM_ERROR_NONE)
@@ -1536,7 +1542,7 @@ _e_eom_output_info_get(tdm_display *dpy)
              goto err;
           }
 
-        if (!output)
+        if (output == NULL)
           {
              EOM_ERR("tdm_display_get_output fail(no output:%d)", ret);
              goto err;
@@ -1554,7 +1560,7 @@ _e_eom_output_info_get(tdm_display *dpy)
           continue;
 
         new_output = E_NEW(E_EomOutput, 1);
-        if (!new_output)
+        if (new_output == NULL)
           {
              EOM_ERR("calloc fail");
              goto err;
@@ -1681,7 +1687,7 @@ err:
 static Eina_Bool
 _e_eom_init()
 {
-   Eina_Bool ret = 0;
+   Eina_Bool ret = EINA_FALSE;
 
    EINA_SAFETY_ON_NULL_GOTO(e_comp_wl, err);
 
