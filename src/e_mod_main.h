@@ -48,6 +48,7 @@ typedef struct _E_Eom_Event_Data E_EomEventData, *E_EomEventDataPtr;
 typedef struct _E_Eom_Output E_EomOutput, *E_EomOutputPtr;
 typedef struct _E_Eom_Fake_Buffers E_EomFakeBuffers, *E_EomFakeBuffersPtr;
 typedef struct _E_Eom_Client_Buffer E_EomClientBuffer, *E_EomClientBufferPtr;
+typedef struct _E_Eom_Client E_EomClient, *E_EomClientPtr;
 
 typedef enum
 {
@@ -110,6 +111,7 @@ struct _E_Eom
 
    /*data related to cooperating with clients */
    E_EomFlag is_mirror_mode;
+   struct wl_resource *current_client;
 
    /* external output data */
    char *ext_output_name;
@@ -148,12 +150,17 @@ struct _E_Eom_Client_Buffer
    unsigned long stamp;
 };
 
+struct _E_Eom_Client
+{
+	struct wl_resource *resource;
+	Eina_Bool curent;
+};
+
 struct _E_Eom_Fake_Buffers
 {
    tbm_surface_h fake_buffers[NUM_MAIN_BUF];
    int current_fake_buffer;
 };
-
 
 /* handle external output */
 static E_Comp_Wl_Output *_e_eom_e_comp_wl_output_get(const Eina_List *outputs, const char *id);
