@@ -104,6 +104,7 @@ struct _E_Eom
 
 #if 1
    /* eom state */
+   E_EomFlag eom_sate;
    enum wl_eom_mode eom_mode;
    enum wl_eom_attribute eom_attribute;
    enum wl_eom_attribute_state eom_attribute_state;

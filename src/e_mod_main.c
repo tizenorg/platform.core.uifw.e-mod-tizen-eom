@@ -116,10 +116,14 @@ _e_eom_pp_cb(tbm_surface_h surface, void *user_data)
    tdm_buffer_remove_release_handler(eom_data->dst_buffers[eom_data->pp_buffer],
                                      _e_eom_pp_cb, eom_data);
 
+   /* Stop EOM */
+   if (g_eom->eom_sate != UP)
+     return;
+
    /* TODO: lock that flag??? */
    /* If a client has committed its buffer stop mirror mode */
    if (g_eom->is_mirror_mode == DOWN)
-        return;
+     return;
 
    tbm_surface_h src_buffer;
    src_buffer = _e_eom_root_internal_tdm_surface_get(g_eom->int_output_name);
@@ -150,6 +154,10 @@ _e_eom_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUS
    RETURNIFTRUE(user_data == NULL, "ERROR: PP EVENT: user data is NULL");
 
    eom_data = (E_EomEventDataPtr)user_data;
+
+   /* Stop EOM */
+   if (g_eom->eom_sate != UP)
+     return;
 
    /* TODO: Maybe better to separating that callback on to mirror and extended callbacks */
    if (g_eom->is_mirror_mode == UP)
@@ -300,20 +308,23 @@ _e_eom_deinit_external_output()
           EOM_DBG ("EXT OUTPUT DEINIT: fail commit:%d\n", err);
         else
           EOM_DBG("EXT OUTPUT DEINIT: ok commit:%d\n", err);
-
-        /* TODO: do I need to do DPMS off? */
-        err = tdm_output_set_dpms(g_eom_event_data.output, TDM_OUTPUT_DPMS_OFF);
-        if (err != TDM_ERROR_NONE)
-          EOM_ERR("EXT OUTPUT DEINIT: failed set DPMS off:%d\n", err);
-
-        for (i = 0; i < NUM_MAIN_BUF; i++)
-          {
-             tdm_buffer_remove_release_handler(g_eom_event_data.dst_buffers[i],
-                                               _e_eom_pp_cb, &g_eom_event_data);
-             if (g_eom_event_data.dst_buffers[i])
-               tbm_surface_destroy(g_eom_event_data.dst_buffers[i]);
-          }
     }
+
+   /* TODO: do I need to do DPMS off? */
+   err = tdm_output_set_dpms(g_eom_event_data.output, TDM_OUTPUT_DPMS_OFF);
+   if (err != TDM_ERROR_NONE)
+     EOM_ERR("EXT OUTPUT DEINIT: failed set DPMS off:%d\n", err);
+
+   for (i = 0; i < NUM_MAIN_BUF; i++)
+     {
+        tdm_buffer_remove_release_handler(g_eom_event_data.dst_buffers[i],
+                                          _e_eom_pp_cb, &g_eom_event_data);
+        if (g_eom_event_data.dst_buffers[i])
+          tbm_surface_destroy(g_eom_event_data.dst_buffers[i]);
+    }
+
+   if (g_eom->eom_sate == DOWN)
+      _e_eom_client_buffers_list_free(g_eom->eom_clients);
 
    if (g_eom->int_output_name)
      {
@@ -747,8 +758,9 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
             GOTOIFTRUE(ret == EINA_FALSE, err, "ERROR: initialize external output\n");
 
             g_eom->is_external_init = UP;
-            g_eom->id = e->id;
+            g_eom->eom_sate = UP;
             g_eom->wl_output = wl_output;
+            g_eom->id = e->id;
 
             _e_eom_set_eom_attribute_state(WL_EOM_ATTRIBUTE_STATE_ACTIVE);
             _e_eom_set_eom_status(WL_EOM_STATUS_CONNECTION);
@@ -759,6 +771,7 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
          {
             g_eom->is_external_init = DOWN;
             g_eom->is_internal_grab = DOWN;
+            g_eom->eom_sate = DOWN;
             g_eom->wl_output = NULL;
             g_eom->id = -1;
 
@@ -796,7 +809,7 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
      }
    else if (strcmp(e->name, "DSI-0") == 0 && g_eom->is_external_init == UP && flag == 2)
      {
-       /*TODO: add support of internal and external output of same size */
+        /*TODO: add support of internal and external output of same size */
         ret = _e_eom_mirror_start(buff, e->w, e->h);
         GOTOIFTRUE(ret == EINA_FALSE, err, "ERROR: get root surfcae\n");
 
@@ -806,7 +819,11 @@ _e_eom_ecore_drm_output_cb(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
 
    ++flag;
 
+   return ECORE_CALLBACK_PASS_ON;
+
 err:
+   _e_eom_deinit_external_output();
+
    _e_eom_set_eom_attribute_state(WL_EOM_ATTRIBUTE_STATE_INACTIVE);
    _e_eom_set_eom_status(WL_EOM_STATUS_DISCONNECTION);
    _e_eom_set_eom_attribute(WL_EOM_ATTRIBUTE_NONE);
@@ -1022,8 +1039,8 @@ _e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource 
 {
    enum wl_eom_error eom_error = WL_EOM_ERROR_NONE;
    struct wl_resource *iterator = NULL;
-   Eina_Bool ret = EINA_FALSE;
    Eina_Bool changes = EINA_FALSE;
+   Eina_Bool ret = EINA_FALSE;
    Eina_List *l;
 
    if (resource == g_eom->current_client)
@@ -1076,7 +1093,7 @@ end:
                                 _e_eom_get_eom_attribute_state(),
                                 eom_error);
 
-   /* Notify  */
+   /* Notify eom clients that eom state has been changed */
    if (changes == EINA_TRUE)
      {
         EINA_LIST_FOREACH(g_eom->eom_clients, l, iterator)
