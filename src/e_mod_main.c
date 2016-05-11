@@ -1029,8 +1029,8 @@ _e_eom_wl_request_set_attribute_cb(struct wl_client *client, struct wl_resource 
    if (resource == g_eom->current_client)
      {
         /* Current client can set any flag it wants */
-       _e_eom_set_eom_attribute_by_current_client(attribute);
-       changes = EINA_TRUE;
+        _e_eom_set_eom_attribute_by_current_client(attribute);
+        changes = EINA_TRUE;
      }
    else
      {
@@ -1149,7 +1149,10 @@ _e_eom_wl_resource_destory_cb(struct wl_resource *resource)
    EOM_DBG("client unbind\n");
 
    g_eom->eom_clients = eina_list_remove(g_eom->eom_clients, resource);
-   g_eom->current_client = NULL;
+
+   /* If not current client has been destroyed do nothing */
+   if (resource != g_eom->current_client)
+     goto end2;
 
    /* If a client has been disconnected and mirror mode has not
     * been restore, start mirror mode
@@ -1183,6 +1186,9 @@ end:
                                           WL_EOM_ERROR_NONE);
           }
      }
+
+end2:
+   g_eom->current_client = NULL;
 }
 
 /* wl_eom global object bind function */
