@@ -12,6 +12,8 @@
 #define EOM_WARN(msg, ARG...) WARN("[eom module][%s:%d] "msg"\n", __FUNCTION__, __LINE__, ##ARG)
 #define EOM_DBG(msg, ARG...) DBG("[eom module][%s:%d] "msg"\n", __FUNCTION__, __LINE__, ##ARG)
 
+#define ALEN(array) (sizeof(array) / sizeof(array)[0])
+
 #define RETURNIFTRUE(statement, msg, ARG...)    \
 if (statement)    \
 {    \
@@ -71,6 +73,8 @@ struct _E_Eom_Output
    unsigned int h;
    unsigned int phys_width;
    unsigned int phys_height;
+
+   tdm_output *output;
 
    tdm_output_conn_status status;
    E_EomFlag mirror_run;
@@ -174,9 +178,10 @@ static enum wl_eom_type _e_eom_output_name_to_eom_type(const char *output_name);
 /* handle internal output, pp */
 static Eina_Bool _e_eom_mirror_start(const char *output_name, int width, int height);
 static tbm_surface_h _e_eom_root_internal_tdm_surface_get(const char *name);
-static Eina_Bool _e_eom_pp_src_to_dst( tbm_surface_h src_buffer);
+static Eina_Bool _e_eom_pp_src_to_dst(tbm_surface_h src_buffer);
 static Eina_Bool _e_eom_pp_is_needed(int src_w, int src_h, int dst_w, int dst_h);
-static void _e_eom_pp_calculate_new_size(int *x, int *new_w, int src_w, int src_h, int dst_w, int dst_h);
+static void _e_eom_calculate_fullsize(int src_h, int src_v, int dst_size_h, int dst_size_v,
+                                      int *dst_x, int *dst_y, int *dst_w, int *dst_h);
 
 /* tdm handlers */
 static void _e_eom_pp_cb(tbm_surface_h surface, void *user_data);
@@ -184,7 +189,13 @@ static void _e_eom_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequen
                                     unsigned int tv_sec EINA_UNUSED, unsigned int tv_usec EINA_UNUSED,
                                     void *user_data);
 
-/* clients buffers */
+/* handle clients buffers
+ * The work flow is very simple, when a client does commit we take a client's
+ * buffer and add it to list. During page flip we show that buffer. When a
+ * new client's buffer has been send we destroy previous buffer and add new
+ * one to the list. And so on
+ * We created that list for future possible extending
+ */
 static E_EomClientBufferPtr _e_eom_create_client_buffer(E_Comp_Wl_Buffer *wl_buffer, tbm_surface_h tbm_buffer);
 static void _e_eom_add_client_buffer_to_list(E_EomClientBufferPtr client_buffer);
 static void _e_eom_client_buffers_list_free();
