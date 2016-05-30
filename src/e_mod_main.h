@@ -168,9 +168,6 @@ struct _E_Eom_Fake_Buffers
 };
 
 /* handle external output */
-static E_Comp_Wl_Output *_e_eom_e_comp_wl_output_get(const Eina_List *outputs, const char *id);
-static Eina_Bool _e_eom_set_up_external_output(const char *output_name, int width, int height);
-static tdm_output * _e_eom_hal_output_get(const char *id);
 static tdm_layer * _e_eom_hal_layer_get(tdm_output *output, int width, int height);
 static Eina_Bool _e_eom_create_output_buffers(E_EomEventDataPtr eom_data, int width, int height);
 static enum wl_eom_type _e_eom_output_name_to_eom_type(const char *output_name);
@@ -203,7 +200,7 @@ static E_EomClientBufferPtr _e_eom_get_client_buffer_from_list();
 
 /*eom utils functions*/
 static int _e_eom_get_time_in_mseconds();
-static void _e_eom_create_fake_buffers(int width, int height);
+/*static void _e_eom_create_fake_buffers(int width, int height);*/
 
 
 #endif
