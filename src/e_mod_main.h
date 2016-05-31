@@ -46,9 +46,7 @@ E_API int   e_modapi_save(E_Module *m);
 
 typedef struct _E_Eom E_Eom, *E_EomPtr;
 typedef struct _E_Eom_Out_Mode E_EomOutMode, *E_EomOutModePtr;
-typedef struct _E_Eom_Event_Data E_EomEventData, *E_EomEventDataPtr;
 typedef struct _E_Eom_Output E_EomOutput, *E_EomOutputPtr;
-typedef struct _E_Eom_Fake_Buffers E_EomFakeBuffers, *E_EomFakeBuffersPtr;
 typedef struct _E_Eom_Client_Buffer E_EomClientBuffer, *E_EomClientBufferPtr;
 typedef struct _E_Eom_Client E_EomClient, *E_EomClientPtr;
 
@@ -74,77 +72,61 @@ struct _E_Eom_Output
    unsigned int phys_width;
    unsigned int phys_height;
 
-   tdm_output *output;
+   const char *name;
 
-   tdm_output_conn_status status;
+   tdm_output *output;
+   tdm_layer *layer;
+   tdm_pp *pp;
+
    E_EomFlag mirror_run;
+   tdm_output_conn_status status;
    eom_output_attribute_e attribute;
    eom_output_attribute_state_e attribute_state;
 
    /* external output data */
-   char *ext_output_name;
-   E_EomFlag is_external_init;
-   E_EomOutMode src_mode;
    E_Comp_Wl_Output *wl_output;
-
-   /* internal output data */
-   char *int_output_name;
-   E_EomFlag is_internal_grab;
    E_EomOutMode dst_mode;
+
+   /* mirror mode data */
+   tbm_surface_h dst_buffers[NUM_MAIN_BUF];
+   int current_buffer;
+   int pp_buffer;
+
+   tbm_surface_h fake_buffer;
 };
 
 struct _E_Eom
 {
    struct wl_global *global;
-   Eina_List *eom_clients;
-   Eina_List *handlers;
+
+   E_EomFlag eom_state;
 
    tdm_display *dpy;
    tbm_bufmgr bufmgr;
    int fd;
 
+   /* Internal output data */
+   char *int_output_name;
+   E_EomOutMode src_mode;
+
+   Eina_List *clients;
+   Eina_List *handlers;
    Eina_List *outputs;
    unsigned int output_count;
-
-#if 1
-   /* eom state */
-   E_EomFlag eom_sate;
-   enum wl_eom_mode eom_mode;
-   enum wl_eom_attribute eom_attribute;
-   enum wl_eom_attribute_state eom_attribute_state;
-   enum wl_eom_status eom_status;
-
-   /*data related to cooperating with clients */
-   E_EomFlag is_mirror_mode;
-   struct wl_resource *current_client;
-
-   /* external output data */
-   char *ext_output_name;
-   E_EomFlag is_external_init;
-   int id;
-   E_EomOutMode src_mode;
-   E_Comp_Wl_Output *wl_output;
-
-   /* internal output data */
-   char *int_output_name;
-   E_EomFlag is_internal_grab;
-   E_EomOutMode dst_mode;
-#endif
 };
 
-struct _E_Eom_Event_Data
+struct _E_Eom_Client
 {
-   tdm_output *output;
-   tdm_layer *layer;
-   tdm_pp *pp;
+   struct wl_resource *resource;
+   Eina_Bool current;
 
-   /* mirror mode data*/
-   tbm_surface_h dst_buffers[NUM_MAIN_BUF];
-   int current_buffer;
-   int pp_buffer;
+   /* Output a client related to */
+   int output_id;
 
-   /* extended mode data */
-   Eina_List *client_buffers_list;
+   /*TODO: As I understand there are cannot be more than one client buffer on
+    *server side, but for future extendabilty store it in the list */
+   /*Client's buffers */
+   Eina_List *buffers;
 };
 
 struct _E_Eom_Client_Buffer
@@ -155,27 +137,14 @@ struct _E_Eom_Client_Buffer
    unsigned long stamp;
 };
 
-struct _E_Eom_Client
-{
-	struct wl_resource *resource;
-	Eina_Bool curent;
-};
-
-struct _E_Eom_Fake_Buffers
-{
-   tbm_surface_h fake_buffers[NUM_MAIN_BUF];
-   int current_fake_buffer;
-};
-
 /* handle external output */
 static tdm_layer * _e_eom_hal_layer_get(tdm_output *output, int width, int height);
-static Eina_Bool _e_eom_create_output_buffers(E_EomEventDataPtr eom_data, int width, int height);
-static enum wl_eom_type _e_eom_output_name_to_eom_type(const char *output_name);
+static Eina_Bool _e_eom_create_output_buffers(E_EomOutputPtr eom_output, int width, int height);
 
 /* handle internal output, pp */
-static Eina_Bool _e_eom_mirror_start(const char *output_name, int width, int height);
+static Eina_Bool _e_eom_mirror_start(E_EomOutputPtr eom_output);
 static tbm_surface_h _e_eom_root_internal_tdm_surface_get(const char *name);
-static Eina_Bool _e_eom_pp_src_to_dst(tbm_surface_h src_buffer);
+static Eina_Bool _e_eom_pp_src_to_dst(E_EomOutputPtr eom_output, tbm_surface_h src_buffer);
 static Eina_Bool _e_eom_pp_is_needed(int src_w, int src_h, int dst_w, int dst_h);
 static void _e_eom_calculate_fullsize(int src_h, int src_v, int dst_size_h, int dst_size_v,
                                       int *dst_x, int *dst_y, int *dst_w, int *dst_h);
@@ -191,16 +160,22 @@ static void _e_eom_commit_cb(tdm_output *output EINA_UNUSED, unsigned int sequen
  * buffer and add it to list. During page flip we show that buffer. When a
  * new client's buffer has been send we destroy previous buffer and add new
  * one to the list. And so on
- * We created that list for future possible extending
+ * We created that list for possible extending in future
  */
-static E_EomClientBufferPtr _e_eom_create_client_buffer(E_Comp_Wl_Buffer *wl_buffer, tbm_surface_h tbm_buffer);
-static void _e_eom_add_client_buffer_to_list(E_EomClientBufferPtr client_buffer);
-static void _e_eom_client_buffers_list_free();
-static E_EomClientBufferPtr _e_eom_get_client_buffer_from_list();
+static E_EomClientBufferPtr _e_eom_client_create_buffer(E_Comp_Wl_Buffer *wl_buffer, tbm_surface_h tbm_buffer);
+static void _e_eom_client_buffer_add(E_EomClientPtr client, E_EomClientBufferPtr buffer);
+static void _e_eom_client_buffers_free(E_EomClientPtr client);
+static E_EomClientBufferPtr _e_eom_client_buffer_get(E_EomClientPtr client);
 
 /*eom utils functions*/
+E_EomClientPtr _e_eom_client_current_by_id_get(int id);
+E_EomClientPtr _e_eom_client_by_resource_get(struct wl_resource *resource);
+E_EomOutputPtr _e_eom_output_by_id_get(int id);
+static tbm_surface_h _e_eom_create_fake_buffer(int width, int height);
 static int _e_eom_get_time_in_mseconds();
-/*static void _e_eom_create_fake_buffers(int width, int height);*/
 
+/*TODO: is there a way to use it in Enlightenment?*/
+/*exported API*/
+E_API Eina_Bool e_eom_is_external_output(struct wl_resource *output_resource);
 
 #endif
