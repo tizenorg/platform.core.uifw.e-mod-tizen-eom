@@ -168,6 +168,7 @@ static void _e_eom_output_stop_mirror(E_EomOutputPtr eom_output);
 static void _e_eom_output_deinit(E_EomOutputPtr eom_output);
 static tdm_layer *_e_eom_output_get_layer(tdm_output *output, int width, int height);
 static E_EomOutputPtr _e_eom_output_get_by_id(int id);
+static E_EomOutputPtr _e_eom_output_get_by_name(const char *name);
 static Eina_Bool _e_eom_output_start_pp(E_EomOutputPtr eom_output);
 
 static Eina_Bool _e_eom_pp_init(E_EomOutputPtr eom_output, tbm_surface_h src_buffer);
