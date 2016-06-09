@@ -774,7 +774,7 @@ _e_eom_get_output_position(void)
 
         EINA_LIST_FOREACH(g_eom->outputs, l, eom_output_tmp)
           {
-             if (eom_output_tmp->status == TDM_OUTPUT_CONN_STATUS_CONNECTED)
+             if (eom_output_tmp->status != TDM_OUTPUT_CONN_STATUS_DISCONNECTED)
                x += eom_output_tmp->w;
           }
      }
@@ -917,7 +917,7 @@ _e_eom_tdm_output_status_change_cb(tdm_output *output, tdm_output_change_type ty
 
    plug = value.u32;
 
-   if (plug == TDM_OUTPUT_CONN_STATUS_CONNECTED || plug == TDM_OUTPUT_CONN_STATUS_MODE_SETTED)
+   if (plug == TDM_OUTPUT_CONN_STATUS_CONNECTED)
      {
         unsigned int mmWidth, mmHeight, subpixel;
         const tdm_output_mode *mode;
@@ -961,7 +961,7 @@ _e_eom_tdm_output_status_change_cb(tdm_output *output, tdm_output_change_type ty
         /* TODO: check output mode(presentation set) and HDMI type */
         _e_eom_start_mirror(eom_output, mode->hdisplay, mode->vdisplay);
      }
-   else /*TDM_OUTPUT_CONN_STATUS_DISCONNECTED*/
+   else if (plug == TDM_OUTPUT_CONN_STATUS_DISCONNECTED)
      {
         if (eom_output->mirror_run == UP)
           _e_eom_stop_mirror(eom_output);
