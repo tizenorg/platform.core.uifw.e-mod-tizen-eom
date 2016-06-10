@@ -582,7 +582,7 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
 
    status2 = value.u32;
 
-   EOM_DBG("type(%d, %d), status(%d, %d) (%s,%s,%s)", type, tdm_type, status, status2, maker, model, name);
+   EOM_DBG("id (%d), type(%d, %d), status(%d, %d) (%s,%s,%s)", eom_output->id, type, tdm_type, status, status2, maker, model, name);
 
    if (tdm_type < ALEN(eom_conn_types))
      tmp_name = eom_conn_types[tdm_type];
@@ -643,8 +643,10 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
         /* If there were previously connected clients to the output - notify them */
         EINA_LIST_FOREACH(g_eom->clients, l, iterator)
           {
-             if (iterator && iterator->output_id == eom_output->id)
+             if (iterator)
                {
+                  EOM_DBG("Send MIRROR ON notification to clients");
+
                   wl_eom_send_output_info(iterator->resource, eom_output->id,
                                           eom_output->type, eom_output->mode,
                                           eom_output->width, eom_output->height,
@@ -674,8 +676,10 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
         /* If there were previously connected clients to the output - notify them */
         EINA_LIST_FOREACH(g_eom->clients, l, iterator)
           {
-             if (iterator && iterator->output_id == eom_output->id)
+             if (iterator)
                {
+                  EOM_DBG("Send MIRROR OFF notification to clients");
+
                   wl_eom_send_output_info(iterator->resource, eom_output->id,
                                           eom_output->type, eom_output->mode,
                                           eom_output->width, eom_output->height,
@@ -1122,10 +1126,8 @@ err:
 static void
 _e_eom_output_stop_mirror(E_EomOutputPtr eom_output)
 {
-   if (eom_output->state != NONE)
+   if (eom_output->state == NONE)
      return;
-
-   eom_output->id = -1;
 
    _e_eom_output_state_set_status(eom_output, TDM_OUTPUT_CONN_STATUS_DISCONNECTED);
    _e_eom_output_state_set_mode(eom_output, EOM_OUTPUT_MODE_NONE);
