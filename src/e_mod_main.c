@@ -233,9 +233,10 @@ _e_eom_cb_wl_resource_destory(struct wl_resource *resource)
    /* If a client has been disconnected and mirror mode has not
     * been restore, start mirror mode
     */
-   if (output->mirror_run == DOWN)
+   if (output->state != MIRROR)
      {
-        output->mirror_run = UP;
+        output->state = MIRROR;
+
         ret = _e_eom_output_start_pp(output);
         GOTOIFTRUE(ret == EINA_FALSE, end,
                    "ERROR: restore mirror mode after a client disconnection\n");
@@ -439,8 +440,7 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
 
    _e_eom_client_add_buffer(client, client_buffer);
 
-   /* Stop mirror mode */
-   output->mirror_run = DOWN;
+   output->state = EXTENDED;
 
    return ECORE_CALLBACK_PASS_ON;
 
@@ -464,7 +464,7 @@ _e_eom_cb_pp(tbm_surface_h surface, void *user_data)
      return;
 
    /* If a client has committed its buffer stop mirror mode */
-   if (eom_output->mirror_run == DOWN)
+   if (eom_output->state != MIRROR)
      return;
 
    tbm_surface_h src_buffer;
@@ -507,7 +507,7 @@ _e_eom_cb_commit(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUS
      return;
 
    /* TODO: Maybe better to separating that callback on to mirror and extended callbacks */
-   if (eom_output->mirror_run == UP)
+   if (eom_output->state == MIRROR)
      {
         /*TODO: rewrite the mirror mode buffer's switching */
         eom_output->current_buffer ^= 1;
@@ -523,7 +523,7 @@ _e_eom_cb_commit(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUS
         err = tdm_output_commit(eom_output->output, 0, _e_eom_cb_commit, eom_output);
         RETURNIFTRUE(err != TDM_ERROR_NONE, "ERROR: EVENT commit");
      }
-   else
+   else if (eom_output->state == EXTENDED)
      {
 #ifdef EOM_SERVER_DBG
         EOM_DBG("COMMIT: FAKE");
@@ -661,7 +661,7 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
      }
    else /*TDM_OUTPUT_CONN_STATUS_DISCONNECTED*/
      {
-        if (eom_output->mirror_run == UP)
+        if (eom_output->state == MIRROR)
           _e_eom_output_stop_mirror(eom_output);
 
         /* update eom_output disconnect */
@@ -746,9 +746,9 @@ _e_eom_cb_wl_request_set_attribute(struct wl_client *client, struct wl_resource 
    /* If client has set EOM_OUTPUT_ATTRIBUTE_NONE, eom will be
     * switched to mirror mode
     */
-   if (attribute == EOM_OUTPUT_ATTRIBUTE_NONE && eom_output->mirror_run == DOWN)
+   if (attribute == EOM_OUTPUT_ATTRIBUTE_NONE && eom_output->state != MIRROR)
      {
-        eom_output->mirror_run= UP;
+        eom_output->state = MIRROR;
 
         _e_eom_output_state_set_mode(eom_output, EOM_OUTPUT_ATTRIBUTE_NONE);
         mode_change = EINA_TRUE;
@@ -787,7 +787,7 @@ end:
 
              if (iterator && iterator->output_id == eom_output->id)
                {
-                 if (eom_output->mirror_run == UP)
+                 if (eom_output->state == MIRROR)
                    wl_eom_send_output_attribute(iterator->resource,
                                                 eom_output->id,
                                                 _e_eom_output_state_get_attribute(eom_output),
@@ -1069,7 +1069,7 @@ _e_eom_output_start_mirror(E_EomOutputPtr eom_output, int width, int height)
    tdm_error tdm_err = TDM_ERROR_NONE;
    int ret = 0;
 
-   if (eom_output->mirror_run == UP)
+   if (eom_output->state == MIRROR)
      return;
 
    output = eom_output->output;
@@ -1108,7 +1108,7 @@ _e_eom_output_start_mirror(E_EomOutputPtr eom_output, int width, int height)
 
    _e_eom_output_state_set_mode(eom_output, EOM_OUTPUT_MODE_MIRROR);
    _e_eom_output_state_set_attribute(eom_output, EOM_OUTPUT_ATTRIBUTE_NONE);
-   eom_output->mirror_run = UP;
+   eom_output->state = MIRROR;
 
    return;
 
@@ -1122,7 +1122,7 @@ err:
 static void
 _e_eom_output_stop_mirror(E_EomOutputPtr eom_output)
 {
-   if (eom_output->mirror_run == DOWN)
+   if (eom_output->state != NONE)
      return;
 
    eom_output->id = -1;
@@ -1133,7 +1133,7 @@ _e_eom_output_stop_mirror(E_EomOutputPtr eom_output)
 
    _e_eom_output_deinit(eom_output);
 
-   eom_output->mirror_run = DOWN;
+   eom_output->state = NONE;
 }
 
 static void
