@@ -342,6 +342,7 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
    E_Event_Client *ev = event;
    E_Client *ec = NULL;
    Eina_Bool ret_err;
+   const char *output_name = NULL;
    /*
    tbm_surface_h external_tbm_buffer = NULL;
    tbm_surface_info_s surface_info;
@@ -365,6 +366,12 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
    RETURNVALIFTRUE(ret_err != EINA_TRUE,
                    ECORE_CALLBACK_PASS_ON,
                    "ERROR: BUFF CHANGE: ec is not external\n");
+
+   output_name = e_client_external_output_name_get(ec);
+   RETURNVALIFTRUE(output_name == NULL,
+                   ECORE_CALLBACK_PASS_ON,
+                   "ERROR:BUFF CHANGE: ec is not bind to any external outputs\n");
+
 
    if (ec->pixmap == NULL)
      return ECORE_CALLBACK_PASS_ON;
@@ -412,8 +419,7 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
    tbm_surface_unmap(external_tbm_buffer);
    */
 
-   /* TODO: identify output and client the buffer is related to */
-   output = _e_eom_output_get_by_id(1);
+   output = _e_eom_output_get_by_name(output_name);
 
    /* TODO: Must find proper way of getting tbm_surface */
    /*client_buffer = _e_eom_util_create_client_buffer(external_wl_buffer, external_tbm_buffer);*/
@@ -1195,6 +1201,21 @@ _e_eom_output_get_by_id(int id)
    EINA_LIST_FOREACH(g_eom->outputs, l, output)
      {
         if (output && output->id == id)
+          return output;
+     }
+
+   return NULL;
+}
+
+static E_EomOutputPtr
+_e_eom_output_get_by_name(const char *name)
+{
+   Eina_List *l;
+   E_EomOutputPtr output;
+
+   EINA_LIST_FOREACH(g_eom->outputs, l, output)
+     {
+        if (output && strcmp(output->name, name) == 0)
           return output;
      }
 
