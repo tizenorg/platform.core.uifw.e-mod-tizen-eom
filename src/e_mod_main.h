@@ -56,6 +56,13 @@ typedef enum
    UP,
 } E_EomFlag;
 
+typedef enum
+{
+   NONE = 0,
+   MIRROR,
+   EXTENDED,
+} E_EomOutputState;
+
 struct _E_Eom_Out_Mode
 {
    int w;
@@ -78,7 +85,7 @@ struct _E_Eom_Output
    tdm_layer *layer;
    tdm_pp *pp;
 
-   E_EomFlag mirror_run;
+   E_EomOutputState state;
    tdm_output_conn_status status;
    eom_output_attribute_e attribute;
    eom_output_attribute_state_e attribute_state;
