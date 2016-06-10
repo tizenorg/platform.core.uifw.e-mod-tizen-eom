@@ -1052,7 +1052,7 @@ _e_eom_output_get_position(void)
 
         EINA_LIST_FOREACH(g_eom->outputs, l, eom_output_tmp)
           {
-             if (eom_output_tmp->status == TDM_OUTPUT_CONN_STATUS_CONNECTED)
+             if (eom_output_tmp->status != TDM_OUTPUT_CONN_STATUS_DISCONNECTED)
                x += eom_output_tmp->width;
           }
      }
@@ -1174,7 +1174,6 @@ _e_eom_output_deinit(E_EomOutputPtr eom_output)
           tbm_surface_destroy(eom_output->dst_buffers[i]);
     }
 
-   /*TODO: what is that for?*/
    if (g_eom->eom_state == DOWN)
      EINA_LIST_FOREACH(g_eom->clients, l, iterator)
        {
