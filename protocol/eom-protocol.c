@@ -11,6 +11,7 @@ static const struct wl_interface *types[] = {
 	NULL,
 	NULL,
 	NULL,
+	NULL,
 };
 
 static const struct wl_message wl_eom_requests[] = {
