@@ -199,6 +199,7 @@ static E_EomClientPtr _e_eom_client_current_by_id_get(int id);
 /*TODO: is there any way to use it in Enlightenment?*/
 /*exported API*/
 E_API Eina_Bool e_eom_output_is_external(struct wl_resource *output_resource);
+E_API Eina_Bool e_eom_output_get_geometry(const char *output_name, int *width, int *height);
 
 #endif
 

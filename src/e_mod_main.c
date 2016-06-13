@@ -1702,6 +1702,31 @@ E_API Eina_Bool e_eom_output_is_external(struct wl_resource *output_resource)
    return EINA_FALSE;
 }
 
+E_API Eina_Bool e_eom_output_get_geometry(const char *output_name, int *width, int *height)
+{
+   E_EomOutputPtr output;
+   Eina_List *l;
+
+   if (output_name == NULL)
+     return EINA_FALSE;
+
+   if ( width == NULL || height == NULL)
+     return EINA_FALSE;
+
+   EINA_LIST_FOREACH(g_eom->outputs, l, output)
+     {
+        if(strcmp(output->name, output_name) == 0)
+          {
+             *width = output->width;
+             *height = output->height;
+
+             return EINA_TRUE;
+          }
+     }
+
+   return EINA_FALSE;
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static Eina_Bool
