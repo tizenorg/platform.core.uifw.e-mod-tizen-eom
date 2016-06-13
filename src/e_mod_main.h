@@ -5,7 +5,6 @@
 
 #define CHECK_ERR(val) if (WL_KEYROUTER_ERROR_NONE != val) return;
 #define CHECK_ERR_VAL(val) if (WL_KEYROUTER_ERROR_NONE != val) return val;
-#define CHECK_NULL(val) if (!val) return;
 #define CHECK_NULL_VAL(val) if (!val) return val;
 
 #define EOM_ERR(msg, ARG...) ERR("[eom module][%s:%d] "msg"\n", __FUNCTION__, __LINE__, ##ARG)
@@ -94,9 +93,9 @@ struct _E_Eom_Output
    E_Comp_Wl_Output *wl_output;
 
    /* mirror mode data */
-   tbm_surface_h dst_buffers[NUM_MAIN_BUF];
-   int current_buffer;
-   int pp_buffer;
+   tbm_surface_queue_h pp_queue;
+
+   int is_committed;
 
    tbm_surface_h fake_buffer;
 };
@@ -176,9 +175,8 @@ static void _e_eom_output_deinit(E_EomOutputPtr eom_output);
 static tdm_layer *_e_eom_output_get_layer(tdm_output *output, int width, int height);
 static E_EomOutputPtr _e_eom_output_get_by_id(int id);
 static E_EomOutputPtr _e_eom_output_get_by_name(const char *name);
-static Eina_Bool _e_eom_output_start_pp(E_EomOutputPtr eom_output);
 
-static Eina_Bool _e_eom_pp_init(E_EomOutputPtr eom_output, tbm_surface_h src_buffer);
+static Eina_Bool _e_eom_pp_init(E_EomOutputPtr eom_output);
 static Eina_Bool _e_eom_pp_is_needed(int src_w, int src_h, int dst_w, int dst_h);
 
 static Eina_Bool _e_eom_util_create_buffers(E_EomOutputPtr eom_output, int width, int height);
