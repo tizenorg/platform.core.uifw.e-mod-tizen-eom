@@ -11,6 +11,8 @@ static const struct wl_interface *types[] = {
 	NULL,
 	NULL,
 	NULL,
+	NULL,
+	NULL,
 };
 
 static const struct wl_message wl_eom_requests[] = {
@@ -20,7 +22,7 @@ static const struct wl_message wl_eom_requests[] = {
 
 static const struct wl_message wl_eom_events[] = {
 	{ "output_count", "u", types + 0 },
-	{ "output_info", "uuuuuuuu", types + 0 },
+	{ "output_info", "uuuuuuuus", types + 0 },
 	{ "output_type", "uuu", types + 0 },
 	{ "output_mode", "uu", types + 0 },
 	{ "output_attribute", "uuuu", types + 0 },

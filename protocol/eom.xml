@@ -94,6 +94,7 @@
       <arg name="w_mm" type="uint"/>
       <arg name="h_mm" type="uint"/>
       <arg name="connection" type="uint"/>
+      <arg name="output_name" type="string"/>
     </event>
 
     <event name="output_type">
