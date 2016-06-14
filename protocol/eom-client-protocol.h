@@ -145,6 +145,8 @@ enum wl_eom_attribute_state {
 
 /**
  * wl_eom - an interface to get the information of the external outputs
+ * @output_count: (none)
+ * @output_info: (none)
  * @output_type: (none)
  * @output_mode: (none)
  * @output_attribute: (none)
@@ -157,8 +159,8 @@ struct wl_eom_listener {
 	 * @count: (none)
 	 */
 	void (*output_count)(void *data,
-			    struct wl_eom *wl_eom,
-			    uint32_t count);
+			     struct wl_eom *wl_eom,
+			     uint32_t count);
 	/**
 	 * output_info - (none)
 	 * @output_id: (none)
@@ -169,18 +171,19 @@ struct wl_eom_listener {
 	 * @w_mm: (none)
 	 * @h_mm: (none)
 	 * @connection: (none)
+	 * @output_name: (none)
 	 */
 	void (*output_info)(void *data,
-				struct wl_eom *wl_eom,
-				uint32_t output_id,
-				uint32_t type,
-				uint32_t mode,
-				uint32_t w,
-				uint32_t h,
-				uint32_t w_mm,
-				uint32_t h_mm,
-				uint32_t connection);
-
+			    struct wl_eom *wl_eom,
+			    uint32_t output_id,
+			    uint32_t type,
+			    uint32_t mode,
+			    uint32_t w,
+			    uint32_t h,
+			    uint32_t w_mm,
+			    uint32_t h_mm,
+			    uint32_t connection,
+			    const char *output_name);
 	/**
 	 * output_type - (none)
 	 * @output_id: (none)
@@ -225,9 +228,10 @@ wl_eom_add_listener(struct wl_eom *wl_eom,
 }
 
 #define WL_EOM_SET_ATTRIBUTE	0
-#define WL_EOM_GET_INFO			1
+#define WL_EOM_GET_OUTPUT_INFO	1
 
 #define WL_EOM_SET_ATTRIBUTE_SINCE_VERSION	1
+#define WL_EOM_GET_OUTPUT_INFO_SINCE_VERSION	1
 
 static inline void
 wl_eom_set_user_data(struct wl_eom *wl_eom, void *user_data)
@@ -264,7 +268,7 @@ static inline void
 wl_eom_get_output_info(struct wl_eom *wl_eom, uint32_t output_id)
 {
 	wl_proxy_marshal((struct wl_proxy *) wl_eom,
-			WL_EOM_GET_INFO, output_id);
+			 WL_EOM_GET_OUTPUT_INFO, output_id);
 }
 
 #ifdef  __cplusplus
