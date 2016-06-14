@@ -177,7 +177,7 @@ _e_eom_cb_wl_bind(struct wl_client *client, void *data, uint32_t version, uint32
                      output->id, output->type, output->mode, output->width, output->height,
                      output->phys_width, output->phys_height, output->status);
              wl_eom_send_output_info(resource, output->id, output->type, output->mode, output->width, output->height,
-                                     output->phys_width, output->phys_height, output->status);
+                                     output->phys_width, output->phys_height, output->status, output->name);
 
              wl_eom_send_output_attribute(resource,
                                           output->id,
@@ -616,7 +616,9 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
         EOM_DBG("mode: %dx%d, phy(%dx%d), pos(%d,0), refresh:%d, subpixel:%d",
                 mode->hdisplay, mode->vdisplay, mmWidth, mmHeight, x, mode->vrefresh, subpixel);
 
-        if (!e_comp_wl_output_init(new_name, maker, model, x, 0,
+        /* model is substituted with new_name.
+         * It used to bind wl_output with eom_output in libeom. */
+        if (!e_comp_wl_output_init(new_name, maker, new_name, x, 0,
                                    mode->hdisplay, mode->vdisplay,
                                    mmWidth, mmHeight, mode->vrefresh, subpixel, 0))
           {
@@ -651,7 +653,7 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
                                           eom_output->type, eom_output->mode,
                                           eom_output->width, eom_output->height,
                                           eom_output->phys_width, eom_output->phys_height,
-                                          eom_output->status);
+                                          eom_output->status, eom_output->name);
 
                   wl_eom_send_output_attribute(iterator->resource,
                                                eom_output->id,
@@ -684,7 +686,7 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
                                           eom_output->type, eom_output->mode,
                                           eom_output->width, eom_output->height,
                                           eom_output->phys_width, eom_output->phys_height,
-                                          eom_output->status);
+                                          eom_output->status, eom_output->name);
 
                   wl_eom_send_output_attribute(iterator->resource,
                                                eom_output->id,
@@ -855,7 +857,7 @@ _e_eom_cb_wl_request_get_output_info(struct wl_client *client, struct wl_resourc
                           output->phys_width, output->phys_height, output->status);
 
                   wl_eom_send_output_info(resource, output->id, output->type, output->mode, output->width, output->height,
-                                          output->phys_width, output->phys_height, output->status);
+                                          output->phys_width, output->phys_height, output->status, output->name);
                }
           }
      }
