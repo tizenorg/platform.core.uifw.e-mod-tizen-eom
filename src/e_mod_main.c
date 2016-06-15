@@ -390,10 +390,10 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
    /* TODO: support buffers smaller then output resolution */
    if (external_wl_buffer->w != output->width ||
        external_wl_buffer->h != output->height )
-   {
-         EOM_ERR("BUFF CHANGE: ERROR: tbm_buffer does not fit outputs resolution");
-         return ECORE_CALLBACK_PASS_ON;
-   }
+     {
+        EOM_ERR("BUFF CHANGE: ERROR: tbm_buffer does not fit output's resolution");
+        return ECORE_CALLBACK_PASS_ON;
+     }
 
    /* TODO: support different external_wl_buffer->type */
    if (external_wl_buffer->resource == NULL)
@@ -413,7 +413,9 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
 
    EOM_DBG("BUFF CHANGE: tbm_buffer %p", external_tbm_buffer);
 
+#if 0
    _e_eom_util_draw(external_tbm_buffer);
+#endif
 
    /* mmap that buffer to get width and height for test's sake */
    /*
@@ -1605,6 +1607,7 @@ _e_eom_util_get_stamp()
    return ((tp.tv_sec * 1000) + (tp.tv_nsec / 1000));
 }
 
+#if 0
 static void
 _e_eom_util_draw(tbm_surface_h surface)
 {
@@ -1627,6 +1630,7 @@ _e_eom_util_draw(tbm_surface_h surface)
           mm[i*500 + j] = r << 24 | g << 16 | b << 8 | a;
        }
 }
+#endif
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 
