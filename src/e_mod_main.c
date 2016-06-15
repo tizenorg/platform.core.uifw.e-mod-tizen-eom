@@ -372,6 +372,8 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
                    ECORE_CALLBACK_PASS_ON,
                    "ERROR:BUFF CHANGE: ec is not bind to any external outputs\n");
 
+   output = _e_eom_output_get_by_name(output_name);
+
    if (ec->pixmap == NULL)
      return ECORE_CALLBACK_PASS_ON;
 
@@ -385,11 +387,13 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
             external_wl_buffer->h,
             external_wl_buffer->type);
 
-   if (external_wl_buffer->w == 1 && external_wl_buffer->h == 1)
-     {
-        EOM_ERR("ERROR:BUFF CHANGE: skip first 1x1 client buffer\n");
-        return ECORE_CALLBACK_PASS_ON;
-     }
+   /* TODO: support buffers smaller then output resolution */
+   if (external_wl_buffer->w != output->width ||
+       external_wl_buffer->h != output->height )
+   {
+         EOM_ERR("BUFF CHANGE: ERROR: tbm_buffer does not fit outputs resolution");
+         return ECORE_CALLBACK_PASS_ON;
+   }
 
    /* TODO: support different external_wl_buffer->type */
    if (external_wl_buffer->resource == NULL)
@@ -409,6 +413,8 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
 
    EOM_DBG("BUFF CHANGE: tbm_buffer %p", external_tbm_buffer);
 
+   _e_eom_util_draw(external_tbm_buffer);
+
    /* mmap that buffer to get width and height for test's sake */
    /*
    memset(&surface_info, 0, sizeof(tbm_surface_info_s));
@@ -424,8 +430,6 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
 
    tbm_surface_unmap(external_tbm_buffer);
    */
-
-   output = _e_eom_output_get_by_name(output_name);
 
    client_buffer = _e_eom_util_create_client_buffer(external_wl_buffer, external_tbm_buffer);
    /* client_buffer = _e_eom_util_create_client_buffer(external_wl_buffer, output->fake_buffer); */
@@ -1599,6 +1603,29 @@ _e_eom_util_get_stamp()
    clock_gettime(CLOCK_MONOTONIC, &tp);
 
    return ((tp.tv_sec * 1000) + (tp.tv_nsec / 1000));
+}
+
+static void
+_e_eom_util_draw(tbm_surface_h surface)
+{
+   int i = 0, j = 0;
+
+   tbm_bo bo = tbm_surface_internal_get_bo(surface, 0);
+   RETURNIFTRUE(bo == NULL, "bo is NULL");
+
+   unsigned int *mm = (unsigned int *)tbm_bo_map(bo, TBM_DEVICE_CPU, TBM_OPTION_READ|TBM_OPTION_WRITE).ptr;
+   RETURNIFTRUE(mm == NULL, "mm is NULL");
+
+   unsigned char r = 0;
+   unsigned char g = 255;
+   unsigned char b = 0;
+   unsigned char a = 0;
+
+   for (i = 0; i < 500; i++)
+     for (j = 0; j < 500; j++)
+       {
+          mm[i*500 + j] = r << 24 | g << 16 | b << 8 | a;
+       }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////

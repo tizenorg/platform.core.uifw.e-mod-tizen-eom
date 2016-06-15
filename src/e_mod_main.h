@@ -189,6 +189,7 @@ static void _e_eom_util_calculate_fullsize(int src_h, int src_v, int dst_size_h,
                                            int *dst_x, int *dst_y, int *dst_w, int *dst_h);
 static tbm_surface_h _e_eom_util_get_output_surface(const char *name);
 static int _e_eom_util_get_stamp();
+static void _e_eom_util_draw(tbm_surface_h surface);
 
 static void _e_eom_client_add_buffer(E_EomClientPtr client, E_EomClientBufferPtr buffer);
 static void _e_eom_client_free_buffers(E_EomClientPtr client);
