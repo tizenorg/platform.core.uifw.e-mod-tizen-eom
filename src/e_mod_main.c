@@ -9,6 +9,7 @@
 #include "e_mod_main.h"
 #include "eom-server-protocol.h"
 #include "Ecore_Drm.h"
+#include <wayland-tbm-server.h>
 
 E_API E_Module_Api e_modapi = { E_MODULE_API_VERSION, "EOM Module" };
 static E_EomPtr g_eom = NULL;
@@ -177,7 +178,7 @@ _e_eom_cb_wl_bind(struct wl_client *client, void *data, uint32_t version, uint32
                      output->id, output->type, output->mode, output->width, output->height,
                      output->phys_width, output->phys_height, output->status);
              wl_eom_send_output_info(resource, output->id, output->type, output->mode, output->width, output->height,
-                                     output->phys_width, output->phys_height, output->status, output->name);
+                                     output->phys_width, output->phys_height, output->status, output->name ?:"");
 
              wl_eom_send_output_attribute(resource,
                                           output->id,
@@ -344,16 +345,14 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
    E_Client *ec = NULL;
    Eina_Bool ret_err;
    const char *output_name = NULL;
-   /*
    tbm_surface_h external_tbm_buffer = NULL;
+/*
    tbm_surface_info_s surface_info;
    int ret;
-   */
+*/
 
    EINA_SAFETY_ON_NULL_RETURN_VAL(ev, ECORE_CALLBACK_PASS_ON);
    EINA_SAFETY_ON_NULL_RETURN_VAL(ev->ec, ECORE_CALLBACK_PASS_ON);
-
-   return ECORE_CALLBACK_PASS_ON;
 
    ec = ev->ec;
    if (e_object_is_del(E_OBJECT(ec)))
@@ -373,7 +372,6 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
                    ECORE_CALLBACK_PASS_ON,
                    "ERROR:BUFF CHANGE: ec is not bind to any external outputs\n");
 
-
    if (ec->pixmap == NULL)
      return ECORE_CALLBACK_PASS_ON;
 
@@ -382,9 +380,10 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
                    ECORE_CALLBACK_PASS_ON,
                    "ERROR:BUFF CHANGE: wl buffer is NULL\n");
 
-   EOM_DBG("BUFF CHANGE: wl_buff:%dx%d",
+   EOM_DBG("BUFF CHANGE: wl_buff:%dx%d type:%d",
             external_wl_buffer->w,
-            external_wl_buffer->h);
+            external_wl_buffer->h,
+            external_wl_buffer->type);
 
    if (external_wl_buffer->w == 1 && external_wl_buffer->h == 1)
      {
@@ -392,9 +391,16 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
         return ECORE_CALLBACK_PASS_ON;
      }
 
-   /*TODO: wayland_tbm_server_get_surface is implicit declarated */
-   /*external_tbm_buffer = wayland_tbm_server_get_surface(NULL,
-                              external_wl_buffer->resource);
+   /* TODO: support different external_wl_buffer->type */
+   if (external_wl_buffer->resource == NULL)
+     {
+        EOM_ERR("ERROR: BUFF CHANGE: resource is NULL\n");
+        return ECORE_CALLBACK_PASS_ON;
+     }
+
+   external_tbm_buffer = wayland_tbm_server_get_surface(
+                            e_comp->wl_comp_data->tbm.server,
+                            external_wl_buffer->resource);
    if (external_tbm_buffer == NULL)
      {
         EOM_ERR("ERROR: BUFF CHANGE: client tbm buffer is NULL\n");
@@ -402,7 +408,6 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
      }
 
    EOM_DBG("BUFF CHANGE: tbm_buffer %p", external_tbm_buffer);
-   */
 
    /* mmap that buffer to get width and height for test's sake */
    /*
@@ -412,7 +417,7 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
    if (ret != TBM_SURFACE_ERROR_NONE)
      {
         EOM_ERR("BUFF CHANGE: failed mmap buffer: %d", ret);
-        //return ECORE_CALLBACK_PASS_ON;
+        return ECORE_CALLBACK_PASS_ON;
      }
 
    EOM_DBG("BUFF CHANGE: tbm_buffer: %dx%d", surface_info.width, surface_info.height);
@@ -422,9 +427,8 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
 
    output = _e_eom_output_get_by_name(output_name);
 
-   /* TODO: Must find proper way of getting tbm_surface */
-   /*client_buffer = _e_eom_util_create_client_buffer(external_wl_buffer, external_tbm_buffer);*/
-   client_buffer = _e_eom_util_create_client_buffer(external_wl_buffer, output->fake_buffer);
+   client_buffer = _e_eom_util_create_client_buffer(external_wl_buffer, external_tbm_buffer);
+   /* client_buffer = _e_eom_util_create_client_buffer(external_wl_buffer, output->fake_buffer); */
    RETURNVALIFTRUE(client_buffer == NULL,
                    ECORE_CALLBACK_PASS_ON,
                    "ERROR: BUFF CHANGE: alloc client buffer");
@@ -653,7 +657,7 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
                                           eom_output->type, eom_output->mode,
                                           eom_output->width, eom_output->height,
                                           eom_output->phys_width, eom_output->phys_height,
-                                          eom_output->status, eom_output->name);
+                                          eom_output->status, eom_output->name ?:"");
 
                   wl_eom_send_output_attribute(iterator->resource,
                                                eom_output->id,
@@ -686,7 +690,7 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
                                           eom_output->type, eom_output->mode,
                                           eom_output->width, eom_output->height,
                                           eom_output->phys_width, eom_output->phys_height,
-                                          eom_output->status, eom_output->name);
+                                          eom_output->status, eom_output->name?:"");
 
                   wl_eom_send_output_attribute(iterator->resource,
                                                eom_output->id,
@@ -852,12 +856,12 @@ _e_eom_cb_wl_request_get_output_info(struct wl_client *client, struct wl_resourc
           {
              if (output->id == output_id)
                {
-                  EOM_DBG("send - id : %d, type : %d, mode : %d, w : %d, h : %d, w_mm : %d, h_mm : %d, conn : %d\n",
+                  EOM_DBG("send - id : %d, type : %d, mode : %d, w : %d, h : %d, w_mm : %d, h_mm : %d, conn : %d, name : %s \n",
                           output->id, output->type, output->mode, output->width, output->height,
-                          output->phys_width, output->phys_height, output->status);
+                          output->phys_width, output->phys_height, output->status, output->name ?:"");
 
                   wl_eom_send_output_info(resource, output->id, output->type, output->mode, output->width, output->height,
-                                          output->phys_width, output->phys_height, output->status, output->name);
+                                          output->phys_width, output->phys_height, output->status, output->name ?:"");
                }
           }
      }
@@ -1479,10 +1483,10 @@ _e_eom_util_create_client_buffer(E_Comp_Wl_Buffer *wl_buffer, tbm_surface_h tbm_
    buffer->stamp = _e_eom_util_get_stamp();
 
    /* I am not sure if it is necessary */
-   /* tbm_surface_internal_ref(tbm_buffer); */
+   tbm_surface_internal_ref(tbm_buffer);
 
    /* TODO: Do we need reference that buffer? */
-   /*e_comp_wl_buffer_reference(buffer->tbm_buffer, NULL);*/
+   /* e_comp_wl_buffer_reference(buffer->tbm_buffer, NULL);*/
 
    return buffer;
 }
@@ -1610,7 +1614,7 @@ _e_eom_client_add_buffer(E_EomClientPtr client, E_EomClientBufferPtr buffer)
 static void
 _e_eom_client_free_buffers(E_EomClientPtr client)
 {
-   E_EomClientBufferPtr *buffer = NULL;
+   E_EomClientBufferPtr buffer = NULL;
    Eina_List *l;
 
    EINA_LIST_FOREACH(client->buffers, l, buffer)
@@ -1618,10 +1622,11 @@ _e_eom_client_free_buffers(E_EomClientPtr client)
         if (buffer)
           {
              /* I am not sure if it is necessary */
-             /* tbm_surface_internal_unref(buffer->tbm_buffer); */
+             if (buffer->tbm_buffer)
+               tbm_surface_internal_unref(buffer->tbm_buffer);
 
              /* TODO: Do we need reference that buffer? */
-             /*e_comp_wl_buffer_reference(buffer->tbm_buffer, NULL);*/
+             /* e_comp_wl_buffer_reference(buffer->tbm_buffer, NULL); */
 
              client->buffers = eina_list_remove(client->buffers, buffer);
              E_FREE(buffer);
@@ -1697,8 +1702,8 @@ E_API Eina_Bool e_eom_output_is_external(struct wl_resource *output_resource)
 
    EINA_LIST_FOREACH(g_eom->outputs, l, output)
      {
-        if(wl_output->id == output->name)
-          return EINA_TRUE;
+          if (output && strcmp( wl_output->id, output->name) == 0)
+            return EINA_TRUE;
      }
 
    return EINA_FALSE;

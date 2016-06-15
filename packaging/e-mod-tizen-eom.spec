@@ -19,6 +19,7 @@ BuildRequires:  pkgconfig(x11)
 %if %{with wayland}
 BuildRequires:  pkgconfig(wayland-server)
 BuildRequires:  pkgconfig(libtbm)
+BuildRequires:  pkgconfig(wayland-tbm-server)
 %endif
 BuildRequires:  pkgconfig(dlog)
 %if "%{?profile}" == "common"

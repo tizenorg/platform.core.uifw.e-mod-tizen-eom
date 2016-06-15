@@ -35,7 +35,7 @@ fi
 
 PKG_CHECK_MODULES(WAYLAND_SCANNER, wayland-scanner)
 PKG_CHECK_MODULES(WAYLAND, [wayland-server])
-PKG_CHECK_MODULES(ENLIGHTENMENT, [enlightenment, elementary, eom])
+PKG_CHECK_MODULES(ENLIGHTENMENT, [enlightenment, elementary, eom, wayland-tbm-server])
 
 dnl ========================================================================
 # checks for wayland only argument
