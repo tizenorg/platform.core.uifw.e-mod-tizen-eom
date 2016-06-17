@@ -60,6 +60,7 @@ make install DESTDIR=%{buildroot}
 
 # clear useless textual files
 find  %{buildroot}%{_libdir}/enlightenment/modules/%{name} -name *.la | xargs rm
+find  %{buildroot}%{_libdir}/enlightenment/modules/%{name} -name *.a | xargs rm
 
 %files
 %defattr(-,root,root,-)
