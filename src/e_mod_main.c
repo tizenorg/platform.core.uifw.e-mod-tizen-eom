@@ -628,7 +628,7 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
         eom_output->type = (eom_output_type_e)tdm_type;
 
         /* TODO: check output mode(presentation set) and HDMI type */
-        _e_eom_output_start_mirror(eom_output, mode->hdisplay, mode->vdisplay);
+        _e_eom_output_start_mirror(eom_output);
 
         /* If there were previously connected clients to the output - notify them */
         EINA_LIST_FOREACH(g_eom->clients, l, iterator)
@@ -1102,9 +1102,8 @@ _e_eom_output_get_position(void)
 }
 
 static void
-_e_eom_output_start_mirror(E_EomOutputPtr eom_output, int width, int height)
+_e_eom_output_start_mirror(E_EomOutputPtr eom_output)
 {
-   tdm_output *output;
    tdm_layer *hal_layer;
    tdm_info_layer layer_info;
    tdm_error tdm_err = TDM_ERROR_NONE;
@@ -1113,11 +1112,10 @@ _e_eom_output_start_mirror(E_EomOutputPtr eom_output, int width, int height)
    if (eom_output->state == MIRROR)
      return;
 
-   output = eom_output->output;
-   hal_layer = _e_eom_output_get_layer(output, width, height);
+   hal_layer = _e_eom_output_get_layer(eom_output);
    GOTOIFTRUE(hal_layer == NULL, err, "ERROR: get hal layer\n");
 
-   ret = _e_eom_output_create_buffers(eom_output, width, height);
+   ret = _e_eom_output_create_buffers(eom_output, eom_output->width, eom_output->height);
    GOTOIFTRUE(ret == EINA_FALSE, err, "ERROR: create buffers \n");
 
    tdm_err = tdm_layer_get_info(hal_layer, &layer_info);
@@ -1131,20 +1129,19 @@ _e_eom_output_start_mirror(E_EomOutputPtr eom_output, int width, int height)
            layer_info.dst_pos.w, layer_info.dst_pos.h);
 
    eom_output->layer = hal_layer;
-   eom_output->output = output;
    eom_output->current_buffer = 0;
 
    tdm_err = tdm_layer_set_buffer(hal_layer, eom_output->dst_buffers[eom_output->current_buffer]);
    GOTOIFTRUE(tdm_err != TDM_ERROR_NONE, err, "ERROR: set buffer on layer:%d\n", tdm_err);
 
-   tdm_err = tdm_output_set_dpms(output, TDM_OUTPUT_DPMS_ON);
+   tdm_err = tdm_output_set_dpms(eom_output->output, TDM_OUTPUT_DPMS_ON);
    GOTOIFTRUE(tdm_err != TDM_ERROR_NONE, err, "ERROR: tdm_output_set_dpms on\n");
 
    /* get main surface */
    ret = _e_eom_output_start_pp(eom_output);
    GOTOIFTRUE(ret == EINA_FALSE, err, "ERROR: get root surfcae\n");
 
-   tdm_err = tdm_output_commit(output, 0, _e_eom_cb_commit, eom_output);
+   tdm_err = tdm_output_commit(eom_output->output, 0, _e_eom_cb_commit, eom_output);
    GOTOIFTRUE(tdm_err != TDM_ERROR_NONE, err, "ERROR: commit crtc:%d\n", tdm_err);
 
    _e_eom_output_state_set_mode(eom_output, EOM_OUTPUT_MODE_MIRROR);
@@ -1223,7 +1220,7 @@ _e_eom_output_deinit(E_EomOutputPtr eom_output)
 }
 
 static tdm_layer *
-_e_eom_output_get_layer(tdm_output *output, int width, int height)
+_e_eom_output_get_layer(E_EomOutputPtr eom_output)
 {
    int i = 0;
    int count = 0;
@@ -1232,7 +1229,10 @@ _e_eom_output_get_layer(tdm_output *output, int width, int height)
    tdm_layer_capability capa;
    tdm_info_layer layer_info;
 
-   err = tdm_output_get_layer_count(output, &count);
+   RETURNVALIFTRUE(eom_output == NULL, NULL, "ERROR: eom_output is NULL");
+   RETURNVALIFTRUE(eom_output->output == NULL, NULL, "ERROR: eom_output->output is NULL");
+
+   err = tdm_output_get_layer_count(eom_output->output, &count);
    if (err != TDM_ERROR_NONE)
      {
         EOM_DBG ("tdm_output_get_layer_count fail(%d)\n", err);
@@ -1241,7 +1241,7 @@ _e_eom_output_get_layer(tdm_output *output, int width, int height)
 
    for (i = 0; i < count; i++)
      {
-        layer = (tdm_layer *)tdm_output_get_layer(output, i, &err);
+        layer = (tdm_layer *)tdm_output_get_layer(eom_output->output, i, &err);
         RETURNVALIFTRUE(err != TDM_ERROR_NONE, NULL, "tdm_output_get_layer fail(%d)\n", err);
 
         err = tdm_layer_get_capabilities(layer, &capa);
@@ -1255,17 +1255,17 @@ _e_eom_output_get_layer(tdm_output *output, int width, int height)
      }
 
    memset(&layer_info, 0x0, sizeof(tdm_info_layer));
-   layer_info.src_config.size.h = width;
-   layer_info.src_config.size.v = height;
+   layer_info.src_config.size.h = eom_output->width;
+   layer_info.src_config.size.v = eom_output->height;
    layer_info.src_config.pos.x = 0;
    layer_info.src_config.pos.y = 0;
-   layer_info.src_config.pos.w = width;
-   layer_info.src_config.pos.h = height;
+   layer_info.src_config.pos.w = eom_output->width;
+   layer_info.src_config.pos.h = eom_output->height;
    layer_info.src_config.format = TBM_FORMAT_ARGB8888;
    layer_info.dst_pos.x = 0;
    layer_info.dst_pos.y = 0;
-   layer_info.dst_pos.w = width;
-   layer_info.dst_pos.h = height;
+   layer_info.dst_pos.w = eom_output->width;
+   layer_info.dst_pos.h = eom_output->height;
    layer_info.transform = TDM_TRANSFORM_NORMAL;
 
    err = tdm_layer_set_info(layer, &layer_info);

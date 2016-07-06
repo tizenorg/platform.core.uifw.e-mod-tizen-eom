@@ -179,10 +179,10 @@ static void _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_ch
 static Eina_Bool _e_eom_output_init(tdm_display *dpy);
 static const tdm_output_mode *_e_eom_output_get_best_mode(tdm_output *output);
 static int _e_eom_output_get_position(void);
-static void _e_eom_output_start_mirror(E_EomOutputPtr eom_output, int width, int height);
+static void _e_eom_output_start_mirror(E_EomOutputPtr eom_output);
 static void _e_eom_output_stop_mirror(E_EomOutputPtr eom_output);
 static void _e_eom_output_deinit(E_EomOutputPtr eom_output);
-static tdm_layer *_e_eom_output_get_layer(tdm_output *output, int width, int height);
+static tdm_layer *_e_eom_output_get_layer(E_EomOutputPtr eom_output);
 static E_EomOutputPtr _e_eom_output_get_by_id(int id);
 static Eina_Bool _e_eom_output_start_pp(E_EomOutputPtr eom_output);
 static Eina_Bool _e_eom_output_create_buffers(E_EomOutputPtr eom_output, int width, int height);
