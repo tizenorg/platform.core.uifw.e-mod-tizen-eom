@@ -13,6 +13,8 @@ struct wl_client;
 struct wl_resource;
 
 struct wl_eom;
+struct wl_shell_surface;
+struct xdg_surface;
 
 extern const struct wl_interface wl_eom_interface;
 
@@ -146,6 +148,8 @@ enum wl_eom_attribute_state {
 /**
  * wl_eom - an interface to get the information of the external outputs
  * @set_attribute: (none)
+ * @set_xdg_window: (none)
+ * @set_shell_window: (none)
  * @get_output_info: (none)
  *
  * ***** TODO ******
@@ -160,6 +164,24 @@ struct wl_eom_interface {
 			      struct wl_resource *resource,
 			      uint32_t output_id,
 			      uint32_t attribute);
+	/**
+	 * set_xdg_window - (none)
+	 * @output_id: (none)
+	 * @surface: (none)
+	 */
+	void (*set_xdg_window)(struct wl_client *client,
+			       struct wl_resource *resource,
+			       uint32_t output_id,
+			       struct wl_resource *surface);
+	/**
+	 * set_shell_window - (none)
+	 * @output_id: (none)
+	 * @surface: (none)
+	 */
+	void (*set_shell_window)(struct wl_client *client,
+				 struct wl_resource *resource,
+				 uint32_t output_id,
+				 struct wl_resource *surface);
 	/**
 	 * get_output_info - (none)
 	 * @output_id: (none)

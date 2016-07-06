@@ -13,6 +13,8 @@ struct wl_client;
 struct wl_resource;
 
 struct wl_eom;
+struct wl_shell_surface;
+struct xdg_surface;
 
 extern const struct wl_interface wl_eom_interface;
 
@@ -226,9 +228,13 @@ wl_eom_add_listener(struct wl_eom *wl_eom,
 }
 
 #define WL_EOM_SET_ATTRIBUTE	0
-#define WL_EOM_GET_OUTPUT_INFO	1
+#define WL_EOM_SET_XDG_WINDOW	1
+#define WL_EOM_SET_SHELL_WINDOW	2
+#define WL_EOM_GET_OUTPUT_INFO	3
 
 #define WL_EOM_SET_ATTRIBUTE_SINCE_VERSION	1
+#define WL_EOM_SET_XDG_WINDOW_SINCE_VERSION	1
+#define WL_EOM_SET_SHELL_WINDOW_SINCE_VERSION	1
 #define WL_EOM_GET_OUTPUT_INFO_SINCE_VERSION	1
 
 static inline void
@@ -260,6 +266,20 @@ wl_eom_set_attribute(struct wl_eom *wl_eom, uint32_t output_id, uint32_t attribu
 {
 	wl_proxy_marshal((struct wl_proxy *) wl_eom,
 			 WL_EOM_SET_ATTRIBUTE, output_id, attribute);
+}
+
+static inline void
+wl_eom_set_xdg_window(struct wl_eom *wl_eom, uint32_t output_id, struct xdg_surface *surface)
+{
+	wl_proxy_marshal((struct wl_proxy *) wl_eom,
+			 WL_EOM_SET_XDG_WINDOW, output_id, surface);
+}
+
+static inline void
+wl_eom_set_shell_window(struct wl_eom *wl_eom, uint32_t output_id, struct wl_shell_surface *surface)
+{
+	wl_proxy_marshal((struct wl_proxy *) wl_eom,
+			 WL_EOM_SET_SHELL_WINDOW, output_id, surface);
 }
 
 static inline void

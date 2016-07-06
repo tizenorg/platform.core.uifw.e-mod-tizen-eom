@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include "wayland-util.h"
 
+extern const struct wl_interface wl_shell_surface_interface;
+extern const struct wl_interface xdg_surface_interface;
 
 static const struct wl_interface *types[] = {
 	NULL,
@@ -12,10 +14,16 @@ static const struct wl_interface *types[] = {
 	NULL,
 	NULL,
 	NULL,
+	NULL,
+	&xdg_surface_interface,
+	NULL,
+	&wl_shell_surface_interface,
 };
 
 static const struct wl_message wl_eom_requests[] = {
 	{ "set_attribute", "uu", types + 0 },
+	{ "set_xdg_window", "uo", types + 8 },
+	{ "set_shell_window", "uo", types + 10 },
 	{ "get_output_info", "u", types + 0 },
 };
 
@@ -29,7 +37,7 @@ static const struct wl_message wl_eom_events[] = {
 
 WL_EXPORT const struct wl_interface wl_eom_interface = {
 	"wl_eom", 1,
-	2, wl_eom_requests,
+	4, wl_eom_requests,
 	5, wl_eom_events,
 };
 

@@ -77,6 +77,16 @@
       <arg name="attribute" type="uint"/>
     </request>
 
+    <request name="set_xdg_window">
+      <arg name="output_id" type="uint"/>
+      <arg name="surface" type="object" interface="xdg_surface" allow-null="false"/>
+    </request>
+
+    <request name="set_shell_window">
+      <arg name="output_id" type="uint"/>
+      <arg name="surface" type="object" interface="wl_shell_surface" allow-null="false"/>
+    </request>
+
     <request name="get_output_info">
       <arg name="output_id" type="uint"/>
     </request>

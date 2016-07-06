@@ -98,7 +98,7 @@ struct _E_Eom_Output
    int current_buffer;
    int pp_buffer;
 
-   tbm_surface_h fake_buffer;
+   tbm_surface_h dummy_buffer;
 };
 
 struct _E_Eom
@@ -126,8 +126,10 @@ struct _E_Eom_Client
    struct wl_resource *resource;
    Eina_Bool current;
 
-   /* Output a client related to */
+   /* EOM output the client related to */
    int output_id;
+   /* E_Client the client related to */
+   E_Client *ec;
 
    /*TODO: As I understand there are cannot be more than one client buffer on
     *server side, but for future extendabilty store it in the list */
@@ -151,6 +153,14 @@ static void _e_eom_cb_wl_request_set_attribute(struct wl_client *client,
                                                struct wl_resource *resource,
                                                uint32_t output_id,
                                                uint32_t attribute);
+static void _e_eom_cb_wl_request_set_xdg_window(struct wl_client *client,
+                                                struct wl_resource *resource,
+                                                uint32_t output_id,
+                                                struct wl_resource *surface);
+static void _e_eom_cb_wl_request_set_shell_window(struct wl_client *client,
+                                                  struct wl_resource *resource,
+                                                  uint32_t output_id,
+                                                  struct wl_resource *surface);
 static void _e_eom_cb_wl_request_get_output_info(struct wl_client *client,
                                                  struct wl_resource *resource,
                                                  uint32_t output_id);
@@ -174,16 +184,17 @@ static void _e_eom_output_stop_mirror(E_EomOutputPtr eom_output);
 static void _e_eom_output_deinit(E_EomOutputPtr eom_output);
 static tdm_layer *_e_eom_output_get_layer(tdm_output *output, int width, int height);
 static E_EomOutputPtr _e_eom_output_get_by_id(int id);
-static E_EomOutputPtr _e_eom_output_get_by_name(const char *name);
 static Eina_Bool _e_eom_output_start_pp(E_EomOutputPtr eom_output);
+static Eina_Bool _e_eom_output_create_buffers(E_EomOutputPtr eom_output, int width, int height);
+
+static void _e_eom_window_set_internal(struct wl_resource *resource, int output_id, E_Client *ec);
 
 static Eina_Bool _e_eom_pp_init(E_EomOutputPtr eom_output, tbm_surface_h src_buffer);
 static Eina_Bool _e_eom_pp_is_needed(int src_w, int src_h, int dst_w, int dst_h);
 
-static Eina_Bool _e_eom_util_create_buffers(E_EomOutputPtr eom_output, int width, int height);
+static tbm_surface_h _e_eom_util_create_buffer(int width, int height, int format, int flags);
 static E_EomClientBufferPtr _e_eom_util_create_client_buffer(E_Comp_Wl_Buffer *wl_buffer,
                                                         tbm_surface_h tbm_buffer);
-static tbm_surface_h _e_eom_util_create_fake_buffer(int width, int height);
 static void _e_eom_util_calculate_fullsize(int src_h, int src_v, int dst_size_h, int dst_size_v,
                                            int *dst_x, int *dst_y, int *dst_w, int *dst_h);
 static tbm_surface_h _e_eom_util_get_output_surface(const char *name);
@@ -196,7 +207,8 @@ static void _e_eom_client_add_buffer(E_EomClientPtr client, E_EomClientBufferPtr
 static void _e_eom_client_free_buffers(E_EomClientPtr client);
 static E_EomClientBufferPtr _e_eom_client_get_buffer(E_EomClientPtr client);
 static E_EomClientPtr _e_eom_client_get_by_resource(struct wl_resource *resource);
-static E_EomClientPtr _e_eom_client_current_by_id_get(int id);
+static E_EomClientPtr _e_eom_client_get_current_by_id(int id);
+static E_EomClientPtr _e_eom_client_get_current_by_ec(E_Client *ec);
 
 #endif
 

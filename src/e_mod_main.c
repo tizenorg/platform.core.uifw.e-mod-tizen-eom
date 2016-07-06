@@ -17,6 +17,8 @@ static E_EomPtr g_eom = NULL;
 static const struct wl_eom_interface _e_eom_wl_implementation =
 {
    _e_eom_cb_wl_request_set_attribute,
+   _e_eom_cb_wl_request_set_xdg_window,
+   _e_eom_cb_wl_request_set_shell_window,
    _e_eom_cb_wl_request_get_output_info
 };
 
@@ -189,16 +191,12 @@ _e_eom_cb_wl_bind(struct wl_client *client, void *data, uint32_t version, uint32
      }
 
    new_client = E_NEW(E_EomClient, 1);
-   if (new_client == NULL)
-     {
-        EOM_ERR("allocate new client");
-        /*TODO: should resource be deleted?*/
-        return;
-     }
+   RETURNIFTRUE(new_client == NULL, "ERROR: allocate new client")
 
    new_client->resource = resource;
    new_client->current = EINA_FALSE;
    new_client->output_id = -1;
+   new_client->ec = NULL;
    new_client->buffers = NULL;
 
    g_eom->clients = eina_list_append(g_eom->clients, new_client);
@@ -344,11 +342,10 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
 {
    E_Comp_Wl_Buffer *external_wl_buffer = NULL;
    E_EomClientBufferPtr client_buffer = NULL;
-   E_EomClientPtr client = NULL;
-   E_EomOutputPtr output = NULL;
+   E_EomClientPtr eom_client = NULL;
+   E_EomOutputPtr eom_output = NULL;
    E_Event_Client *ev = event;
    E_Client *ec = NULL;
-   const char *output_name = NULL;
    tbm_surface_h external_tbm_buffer = NULL;
 /*
    tbm_surface_info_s surface_info;
@@ -359,17 +356,21 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
    EINA_SAFETY_ON_NULL_RETURN_VAL(ev->ec, ECORE_CALLBACK_PASS_ON);
 
    ec = ev->ec;
-   if (e_object_is_del(E_OBJECT(ec)))
-     {
-        EOM_ERR("ERROR: BUFF CHANGE: ec objects is del\n");
-        return ECORE_CALLBACK_PASS_ON;
-     }
+   RETURNVALIFTRUE(e_object_is_del(E_OBJECT(ec)),
+                   ECORE_CALLBACK_PASS_ON,
+                   "ERROR: BUFF CHANGE: ec objects is del\n");
 
-   /* TODO: implemente new client's buffers hooking mechanism */
-   return ECORE_CALLBACK_PASS_ON;
+   eom_client = _e_eom_client_get_current_by_ec(ec);
+   if (eom_client== NULL)
+     return ECORE_CALLBACK_PASS_ON;
+/*
+   RETURNVALIFTRUE(eom_client == NULL,
+                   ECORE_CALLBACK_PASS_ON,
+                   "ERROR: BUFF CHANGE: current client is NULL");
+*/
 
-   output = _e_eom_output_get_by_name(output_name);
-   RETURNVALIFTRUE(output == NULL,
+   eom_output = _e_eom_output_get_by_id(eom_client->output_id);
+   RETURNVALIFTRUE(eom_output == NULL,
                    ECORE_CALLBACK_PASS_ON,
                    "ERROR:BUFF CHANGE: eom_output is NULL\n");
 
@@ -380,6 +381,10 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
    RETURNVALIFTRUE(external_wl_buffer == NULL,
                    ECORE_CALLBACK_PASS_ON,
                    "ERROR:BUFF CHANGE: wl buffer is NULL\n");
+   RETURNVALIFTRUE(external_wl_buffer->resource == NULL,
+                   ECORE_CALLBACK_PASS_ON,
+                   "ERROR: BUFF CHANGE: resource is NULL\n");
+
 /*
    EOM_DBG("BUFF CHANGE: wl_buff:%dx%d type:%d",
             external_wl_buffer->w,
@@ -388,8 +393,8 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
 */
 
    /* TODO: support buffers smaller then output resolution */
-   if (external_wl_buffer->w != output->width ||
-       external_wl_buffer->h != output->height )
+   if (external_wl_buffer->w != eom_output->width ||
+       external_wl_buffer->h != eom_output->height )
      {
         EOM_ERR("BUFF CHANGE: ERROR: tbm_buffer does not fit output's resolution");
         return ECORE_CALLBACK_PASS_ON;
@@ -397,20 +402,12 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
 
    /* TODO: support different external_wl_buffer->type */
 
-   if (external_wl_buffer->resource == NULL)
-     {
-        EOM_ERR("ERROR: BUFF CHANGE: resource is NULL\n");
-        return ECORE_CALLBACK_PASS_ON;
-     }
-
    external_tbm_buffer = wayland_tbm_server_get_surface(
                             e_comp->wl_comp_data->tbm.server,
                             external_wl_buffer->resource);
-   if (external_tbm_buffer == NULL)
-     {
-        EOM_ERR("ERROR: BUFF CHANGE: client tbm buffer is NULL\n");
-        return ECORE_CALLBACK_PASS_ON;
-     }
+   RETURNVALIFTRUE(external_tbm_buffer == NULL,
+                   ECORE_CALLBACK_PASS_ON,
+                   "ERROR: BUFF CHANGE: client tbm buffer is NULL\n");
 
    EOM_DBG("BUFF CHANGE: tbm_buffer %p", external_tbm_buffer);
 
@@ -435,23 +432,13 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
    */
 
    client_buffer = _e_eom_util_create_client_buffer(external_wl_buffer, external_tbm_buffer);
-   /* client_buffer = _e_eom_util_create_client_buffer(external_wl_buffer, output->fake_buffer); */
    RETURNVALIFTRUE(client_buffer == NULL,
                    ECORE_CALLBACK_PASS_ON,
                    "ERROR: BUFF CHANGE: alloc client buffer");
 
-   /* TODO: What if not current client has committed a buffer */
-   client = _e_eom_client_current_by_id_get(output->id);
-   if (client == NULL)
-     {
-        EOM_ERR("ERROR: BUFF CHANGE: current client is NULL");
-        E_FREE(client_buffer);
-        return ECORE_CALLBACK_PASS_ON;
-     }
+   _e_eom_client_add_buffer(eom_client, client_buffer);
 
-   _e_eom_client_add_buffer(client, client_buffer);
-
-   output->state = PRESENTATION;
+   eom_output->state = PRESENTATION;
 
    return ECORE_CALLBACK_PASS_ON;
 }
@@ -503,6 +490,7 @@ _e_eom_cb_commit(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUS
    E_EomOutputPtr eom_output = NULL;
    E_EomClientPtr eom_client = NULL;
    tdm_error err = TDM_ERROR_NONE;
+   tbm_surface_h external_buffer = NULL;
 
    eom_output = (E_EomOutputPtr)user_data;
    RETURNIFTRUE(user_data == NULL, "ERROR: COMMIT EVENT: user data is NULL");
@@ -525,12 +513,18 @@ _e_eom_cb_commit(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUS
      }
    else if (eom_output->state == PRESENTATION)
      {
-        eom_client = _e_eom_client_current_by_id_get(eom_output->id);
+        eom_client = _e_eom_client_get_current_by_id(eom_output->id);
 
         client_buffer = _e_eom_client_get_buffer(eom_client);
-        RETURNIFTRUE(client_buffer == NULL, "ERROR: COMMIT EVENT: PRESENTATION: client buffer is NULL");
+        if (client_buffer == NULL)
+          {
+             external_buffer = eom_output->dummy_buffer;
+             EOM_DBG("COMMIT EVENT: PRESENTATION: dummy buffer was substitute");
+          }
+        else
+          external_buffer = client_buffer->tbm_buffer;
 
-        err = tdm_layer_set_buffer(eom_output->layer, client_buffer->tbm_buffer);
+        err = tdm_layer_set_buffer(eom_output->layer, external_buffer);
         RETURNIFTRUE(err != TDM_ERROR_NONE, "ERROR: COMMIT EVENT: PRESENTATION: set client buffer");
 
         err = tdm_output_commit(eom_output->output, 0, _e_eom_cb_commit, eom_output);
@@ -633,9 +627,6 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
         eom_output->name = eina_stringshare_add(new_name);
         eom_output->type = (eom_output_type_e)tdm_type;
 
-        /* Create fake buffer */
-        eom_output->fake_buffer = _e_eom_util_create_fake_buffer(eom_output->width, eom_output->height);
-
         /* TODO: check output mode(presentation set) and HDMI type */
         _e_eom_output_start_mirror(eom_output, mode->hdisplay, mode->vdisplay);
 
@@ -692,9 +683,6 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
                                                EOM_ERROR_NONE);
                }
           }
-
-        if (eom_output->fake_buffer)
-          tbm_surface_destroy(eom_output->fake_buffer);
 
         e_comp_wl_output_remove(new_name);
         EOM_DBG("Destory output: %s", new_name);
@@ -844,6 +832,50 @@ no_output:
    return;
 }
 
+/* TODO: It uses xdg_surface. Add support of shell_surface */
+/* TODO: I think there must be implemented an event for client which signals if set window was successful */
+static void
+_e_eom_cb_wl_request_set_xdg_window(struct wl_client *client, struct wl_resource *resource, uint32_t output_id, struct wl_resource *surface)
+{
+   E_Client *ec = NULL;
+
+   if (resource == NULL || output_id <= 0 || surface == NULL)
+     return;
+
+   EOM_DBG("SET XDG WINDOW: output id:%d resource:%p surface:%p",
+           output_id, resource, surface);
+
+   if (!(ec = wl_resource_get_user_data(surface)))
+     {
+        wl_resource_post_error(surface,WL_DISPLAY_ERROR_INVALID_OBJECT,
+                               "No Client For Shell Surface");
+        return;
+     }
+
+   _e_eom_window_set_internal(resource, output_id, ec);
+}
+
+static void
+_e_eom_cb_wl_request_set_shell_window(struct wl_client *client, struct wl_resource *resource, uint32_t output_id, struct wl_resource *surface)
+{
+   E_Client *ec = NULL;
+
+   if (resource == NULL || output_id <= 0 || surface == NULL)
+     return;
+
+   EOM_DBG("SET SHELL WINDOW: output id:%d resource:%p surface:%p",
+           output_id, resource, surface);
+
+   if (!(ec = wl_resource_get_user_data(surface)))
+     {
+        wl_resource_post_error(surface,WL_DISPLAY_ERROR_INVALID_OBJECT,
+                               "No Client For Shell Surface");
+        return;
+     }
+
+   _e_eom_window_set_internal(resource, output_id, ec);
+}
+
 static void
 _e_eom_cb_wl_request_get_output_info(struct wl_client *client, struct wl_resource *resource, uint32_t output_id)
 {
@@ -959,7 +991,6 @@ _e_eom_output_init(tdm_display *dpy)
              new_output->width = 0;
              new_output->height = 0;
           }
-
         else
           {
              new_output->width = mode->hdisplay;
@@ -1086,7 +1117,7 @@ _e_eom_output_start_mirror(E_EomOutputPtr eom_output, int width, int height)
    hal_layer = _e_eom_output_get_layer(output, width, height);
    GOTOIFTRUE(hal_layer == NULL, err, "ERROR: get hal layer\n");
 
-   ret = _e_eom_util_create_buffers(eom_output, width, height);
+   ret = _e_eom_output_create_buffers(eom_output, width, height);
    GOTOIFTRUE(ret == EINA_FALSE, err, "ERROR: create buffers \n");
 
    tdm_err = tdm_layer_get_info(hal_layer, &layer_info);
@@ -1258,21 +1289,6 @@ _e_eom_output_get_by_id(int id)
    return NULL;
 }
 
-static E_EomOutputPtr
-_e_eom_output_get_by_name(const char *name)
-{
-   Eina_List *l;
-   E_EomOutputPtr output;
-
-   EINA_LIST_FOREACH(g_eom->outputs, l, output)
-     {
-        if (output && strcmp(output->name, name) == 0)
-          return output;
-     }
-
-   return NULL;
-}
-
 static Eina_Bool
 _e_eom_output_start_pp(E_EomOutputPtr eom_output)
 {
@@ -1302,6 +1318,64 @@ _e_eom_output_start_pp(E_EomOutputPtr eom_output)
 }
 
 static Eina_Bool
+_e_eom_output_create_buffers(E_EomOutputPtr eom_output, int width, int height)
+{
+   int i = 0;
+
+   /* TODO: Add support for other formats */
+   for (i = 0; i < NUM_MAIN_BUF; i++)
+     {
+        eom_output->dst_buffers[i] = _e_eom_util_create_buffer(width, height, TBM_FORMAT_ARGB8888, TBM_BO_SCANOUT);
+        GOTOIFTRUE(eom_output->dst_buffers[i] == NULL, err, "ERROR: create dst buffer");
+     }
+
+   eom_output->dummy_buffer = _e_eom_util_create_buffer(width, height, TBM_FORMAT_ARGB8888, TBM_BO_SCANOUT);
+   GOTOIFTRUE(eom_output->dummy_buffer == NULL, err, "ERROR: create dummy buffer");
+
+   return EINA_TRUE;
+
+err:
+   for (i = 0; i < NUM_MAIN_BUF; i++)
+     if (eom_output->dst_buffers[i])
+       tbm_surface_destroy(eom_output->dst_buffers[i]);
+
+   return EINA_FALSE;
+}
+
+static void
+_e_eom_window_set_internal(struct wl_resource *resource, int output_id, E_Client *ec)
+{
+   E_EomOutputPtr eom_output = NULL;
+   E_EomClientPtr eom_client = NULL;
+   E_Comp_Client_Data *cdata = NULL;
+
+   if (resource == NULL || output_id <= 0 || ec == NULL)
+     return;
+
+   cdata = ec->comp_data;
+   RETURNIFTRUE(cdata == NULL, "ERROR: cdata is NULL");
+   RETURNIFTRUE(cdata->shell.configure_send == NULL, "ERROR: cdata->shell.configure_send  is NULL");
+
+   eom_client = _e_eom_client_get_by_resource(resource);
+   RETURNIFTRUE(eom_client == NULL, "ERROR: client is NULL");
+
+   RETURNIFTRUE(eom_client->current == EINA_FALSE, "ERROR: not current client is going to set its window");
+
+   eom_output = _e_eom_output_get_by_id(output_id);
+   RETURNIFTRUE(eom_output == NULL, "ERROR: EOM output is NULL");
+
+   cdata->shell.configure_send(ec->comp_data->shell.surface, 0, eom_output->width, eom_output->height);
+
+   /* Hide the window from e compositing
+    * TODO: It is not work find other solution
+    */
+   e_comp_object_redirected_set(ec->frame, 0);
+
+   /* ec is used in buffer_change callback for distinguishing external ec and its buffers */
+   eom_client->ec = ec;
+}
+
+static Eina_Bool
 _e_eom_pp_init(E_EomOutputPtr eom_output, tbm_surface_h src_buffer)
 {
    tdm_error err = TDM_ERROR_NONE;
@@ -1314,11 +1388,12 @@ _e_eom_pp_init(E_EomOutputPtr eom_output, tbm_surface_h src_buffer)
 
    eom_output->pp = pp;
 
-   /* TO DO : consider rotation */
+   /* TODO : consider rotation */
    _e_eom_util_calculate_fullsize(g_eom->width, g_eom->height,
                              eom_output->width, eom_output->height,
                              &x, &y, &w, &h);
-   EOM_DBG("x:%d, y:%d, w:%d, h:%d\n", x, y, w, h);
+
+   EOM_DBG("PP calculation: x:%d, y:%d, w:%d, h:%d\n", x, y, w, h);
 
    pp_info.src_config.size.h = g_eom->width;
    pp_info.src_config.size.v = g_eom->height;
@@ -1345,10 +1420,6 @@ _e_eom_pp_init(E_EomOutputPtr eom_output, tbm_surface_h src_buffer)
    RETURNVALIFTRUE(err != TDM_ERROR_NONE, EINA_FALSE, "ERROR: set pp info:%d\n", err);
 
    eom_output->pp_buffer = !eom_output->current_buffer;
-   EOM_DBG("PP: curr:%d  pp:%d\n",
-           eom_output->current_buffer,
-           eom_output->pp_buffer);
-
    err = tdm_buffer_add_release_handler(eom_output->dst_buffers[eom_output->pp_buffer],
                                       _e_eom_cb_pp, eom_output);
    RETURNVALIFTRUE(err != TDM_ERROR_NONE, EINA_FALSE, "ERROR: set pp hadler:%d\n", err);
@@ -1376,97 +1447,27 @@ _e_eom_pp_is_needed(int src_w, int src_h, int dst_w, int dst_h)
 }
 
 static tbm_surface_h
-_e_eom_util_create_fake_buffer(int width, int height)
+_e_eom_util_create_buffer(int width, int height, int format, int flags)
 {
    tbm_surface_info_s buffer_info;
    tbm_surface_h buffer = NULL;
 
-   buffer = tbm_surface_internal_create_with_flags(width, height, TBM_FORMAT_ARGB8888, TBM_BO_SCANOUT);
-   GOTOIFTRUE(buffer == NULL, err, "can not create fake_buffer\n");
+   buffer = tbm_surface_internal_create_with_flags(width, height, format, flags);
+   RETURNVALIFTRUE(buffer == NULL, NULL, "ERROR: create buffer");
 
    memset(&buffer_info, 0x0, sizeof(tbm_surface_info_s));
    if (tbm_surface_map(buffer,
-                  TBM_SURF_OPTION_READ | TBM_SURF_OPTION_WRITE,
-                  &buffer_info) != TBM_SURFACE_ERROR_NONE)
+                       TBM_SURF_OPTION_READ | TBM_SURF_OPTION_WRITE,
+                       &buffer_info) != TBM_SURFACE_ERROR_NONE)
      {
-        EOM_DBG("can not mmap fake_buffer\n");
-        goto err;
+        EOM_DBG("ERROR: map buffer");
+        return NULL;
      }
 
-   memset(buffer_info.planes[0].ptr, 0xFF, buffer_info.planes[0].size);
+   memset(buffer_info.planes[0].ptr, 0x0, buffer_info.planes[0].size);
    tbm_surface_unmap(buffer);
 
    return buffer;
-err:
-
-   if (buffer)
-     tbm_surface_destroy(buffer);
-
-   /* TODO: check if the fake buffer is NULL along the code */
-   return NULL;
-}
-
-static Eina_Bool
-_e_eom_util_create_buffers(E_EomOutputPtr eom_output, int width, int height)
-{
-   tbm_surface_info_s buffer_info;
-   tbm_surface_h buffer = NULL;
-   int i = 0;
-
-   /*
-    * TODO: Add support of other formats
-    */
-   buffer = tbm_surface_internal_create_with_flags(width, height, TBM_FORMAT_ARGB8888, TBM_BO_SCANOUT);
-   GOTOIFTRUE(buffer == NULL, err, "can not create dst_buffer 1");
-
-   /*
-    * TODO: temp code for testing, actual convert will be in _e_eom_put_src_to_dst()
-    */
-   memset(&buffer_info, 0x0, sizeof(tbm_surface_info_s));
-   if (tbm_surface_map(buffer,
-                       TBM_SURF_OPTION_READ | TBM_SURF_OPTION_WRITE,
-                       &buffer_info) != TBM_SURFACE_ERROR_NONE)
-     {
-        EOM_DBG("can not mmap buffer\n");
-        goto err;
-     }
-
-   memset(buffer_info.planes[0].ptr, 0x0, buffer_info.planes[0].size);
-   tbm_surface_unmap(buffer);
-
-   eom_output->dst_buffers[0] = buffer;
-
-   /*
-    * TODO: Add support of other formats
-    */
-   buffer = tbm_surface_internal_create_with_flags(width, height, TBM_FORMAT_ARGB8888, TBM_BO_SCANOUT);
-   GOTOIFTRUE(buffer == NULL, err, "can not create dst_buffer 2");
-
-   /*
-    * TODO: temp code for testing, actual convert will be in _e_eom_put_src_to_dst()
-    */
-   memset(&buffer_info, 0x00, sizeof(tbm_surface_info_s));
-   if (tbm_surface_map(buffer,
-                       TBM_SURF_OPTION_READ | TBM_SURF_OPTION_WRITE,
-                       &buffer_info) != TBM_SURFACE_ERROR_NONE)
-     {
-        EOM_DBG("can not mmap buffer\n");
-        goto err;
-     }
-
-   memset(buffer_info.planes[0].ptr, 0x0, buffer_info.planes[0].size);
-   tbm_surface_unmap(buffer);
-
-   eom_output->dst_buffers[1] = buffer;
-
-   return EINA_TRUE;
-
-err:
-   for (i = 0; i < NUM_MAIN_BUF; i++)
-     if (eom_output->dst_buffers[i])
-       tbm_surface_destroy(eom_output->dst_buffers[i]);
-
-   return EINA_FALSE;
 }
 
 static E_EomClientBufferPtr
@@ -1693,7 +1694,7 @@ _e_eom_client_get_by_resource(struct wl_resource *resource)
 }
 
 static E_EomClientPtr
-_e_eom_client_current_by_id_get(int id)
+_e_eom_client_get_current_by_id(int id)
 {
    Eina_List *l;
    E_EomClientPtr client;
@@ -1703,6 +1704,23 @@ _e_eom_client_current_by_id_get(int id)
         if (client &&
             client->current == EINA_TRUE &&
             client->output_id == id)
+          return client;
+     }
+
+   return NULL;
+}
+
+static E_EomClientPtr
+_e_eom_client_get_current_by_ec(E_Client *ec)
+{
+   Eina_List *l;
+   E_EomClientPtr client;
+
+   EINA_LIST_FOREACH(g_eom->clients, l, client)
+     {
+        if (client &&
+            client->current == EINA_TRUE &&
+            client->ec == ec)
           return client;
      }
 
