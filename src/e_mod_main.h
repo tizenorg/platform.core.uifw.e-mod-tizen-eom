@@ -3,16 +3,29 @@
 
 #include "eom-server-protocol.h"
 
+extern Eina_Bool eom_server_debug_on;
+
+#define ALEN(array) (sizeof(array) / sizeof(array)[0])
+
 #define CHECK_ERR(val) if (WL_KEYROUTER_ERROR_NONE != val) return;
 #define CHECK_ERR_VAL(val) if (WL_KEYROUTER_ERROR_NONE != val) return val;
 #define CHECK_NULL(val) if (!val) return;
 #define CHECK_NULL_VAL(val) if (!val) return val;
 
-#define EOM_ERR(msg, ARG...) ERR("[eom module][%s:%d] "msg"\n", __FUNCTION__, __LINE__, ##ARG)
-#define EOM_WARN(msg, ARG...) WARN("[eom module][%s:%d] "msg"\n", __FUNCTION__, __LINE__, ##ARG)
-#define EOM_DBG(msg, ARG...) DBG("[eom module][%s:%d] "msg"\n", __FUNCTION__, __LINE__, ##ARG)
+#define EOM_INF(msg, ARG...) INF("[eom module][%s:%d] " msg "\n", __FUNCTION__, __LINE__, ##ARG)
+#define EOM_ERR(msg, ARG...) ERR("[eom module][%s:%d] ERR: " msg "\n", __FUNCTION__, __LINE__, ##ARG)
 
-#define ALEN(array) (sizeof(array) / sizeof(array)[0])
+#define EOM_DBG(msg, ARG...)    \
+{    \
+   if (eom_server_debug_on)    \
+     DBG("[eom module][%s:%d] DBG: " msg "\n", __FUNCTION__, __LINE__, ##ARG);    \
+}
+
+#define EOM_WARN(msg, ARG...)    \
+{    \
+   if (eom_server_debug_on)    \
+     WARN("[eom module][%s:%d] WARN: " msg "\n", __FUNCTION__, __LINE__, ##ARG);    \
+}
 
 #define RETURNIFTRUE(statement, msg, ARG...)    \
 if (statement)    \
@@ -192,6 +205,7 @@ static void _e_eom_window_set_internal(struct wl_resource *resource, int output_
 static Eina_Bool _e_eom_pp_init(E_EomOutputPtr eom_output, tbm_surface_h src_buffer);
 static Eina_Bool _e_eom_pp_is_needed(int src_w, int src_h, int dst_w, int dst_h);
 
+static void _e_eom_util_get_debug_env();
 static tbm_surface_h _e_eom_util_create_buffer(int width, int height, int format, int flags);
 static E_EomClientBufferPtr _e_eom_util_create_client_buffer(E_Comp_Wl_Buffer *wl_buffer,
                                                         tbm_surface_h tbm_buffer);
