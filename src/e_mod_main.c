@@ -844,7 +844,7 @@ _e_eom_cb_wl_request_set_xdg_window(struct wl_client *client, struct wl_resource
    if (resource == NULL || output_id <= 0 || surface == NULL)
      return;
 
-   EOM_DBG(" 11111111 output id:%d resource:%p surface:%p",
+   EOM_DBG(" set xdg output id:%d resource:%p surface:%p",
            output_id, resource, surface);
 
    if (!(ec = wl_resource_get_user_data(surface)))
@@ -865,7 +865,7 @@ _e_eom_cb_wl_request_set_shell_window(struct wl_client *client, struct wl_resour
    if (resource == NULL || output_id <= 0 || surface == NULL)
      return;
 
-   EOM_DBG("output id:%d resource:%p surface:%p",
+   EOM_DBG("set shell output id:%d resource:%p surface:%p",
            output_id, resource, surface);
 
    if (!(ec = wl_resource_get_user_data(surface)))
@@ -901,6 +901,33 @@ _e_eom_cb_wl_request_get_output_info(struct wl_client *client, struct wl_resourc
                }
           }
      }
+}
+
+static Eina_Bool
+_e_eom_cb_comp_object_redirected(void *data, E_Client *ec)
+{
+   E_EomCompObjectInterceptHookData *hook_data;
+
+   EOM_DBG("_e_eom_cb_comp_object_redirected");
+
+   hook_data = (E_EomCompObjectInterceptHookData* )data;
+
+   RETURNVALIFTRUE(data == NULL, EINA_TRUE, "data is NULL");
+   RETURNVALIFTRUE(hook_data->ec == NULL, EINA_TRUE, "hook_data->ec is NULL");
+   RETURNVALIFTRUE(hook_data->hook == NULL, EINA_TRUE, "hook_data->hook is NULL");
+   RETURNVALIFTRUE(hook_data->ec != ec, EINA_TRUE, "hook_data->ec != ec");
+
+   /* Hide the window from Enlightenment main screen */
+   e_comp_object_redirected_set(ec->frame, EINA_FALSE);
+
+   e_comp_object_intercept_hook_del(hook_data->hook);
+
+   g_eom->comp_object_intercept_hooks = eina_list_remove(g_eom->comp_object_intercept_hooks,
+                                                         hook_data);
+
+   free(hook_data);
+
+   return EINA_TRUE;
 }
 
 static Eina_Bool
@@ -1345,6 +1372,7 @@ _e_eom_window_set_internal(struct wl_resource *resource, int output_id, E_Client
    E_EomOutputPtr eom_output = NULL;
    E_EomClientPtr eom_client = NULL;
    E_Comp_Client_Data *cdata = NULL;
+   Eina_Bool ret = EINA_FALSE;
 
    if (resource == NULL || output_id <= 0 || ec == NULL)
      return;
@@ -1361,12 +1389,18 @@ _e_eom_window_set_internal(struct wl_resource *resource, int output_id, E_Client
    eom_output = _e_eom_output_get_by_id(output_id);
    RETURNIFTRUE(eom_output == NULL, "eom_output is NULL");
 
-   cdata->shell.configure_send(ec->comp_data->shell.surface, 0, eom_output->width, eom_output->height);
+   #if 0
+      /* Hide the window from e compositing
+       * TODO: It is not work find other solution
+       */
+      e_comp_object_redirected_set(ec->frame, EINA_FALSE);
+   #else
+      ret = _e_eom_util_add_comp_object_redirected_hook(ec);
+      RETURNIFTRUE(ret != EINA_TRUE, "Set redirect comp hook failed");
+   #endif
+      EOM_DBG("e_comp_object_redirected_set (ec->frame:%p)\n", ec->frame);
 
-   /* Hide the window from e compositing
-    * TODO: It is not work find other solution
-    */
-   e_comp_object_redirected_set(ec->frame, 0);
+   cdata->shell.configure_send(ec->comp_data->shell.surface, 0, eom_output->width, eom_output->height);
 
    /* ec is used in buffer_change callback for distinguishing external ec and its buffers */
    eom_client->ec = ec;
@@ -1472,6 +1506,7 @@ _e_eom_util_create_buffer(int width, int height, int format, int flags)
                        &buffer_info) != TBM_SURFACE_ERROR_NONE)
      {
         EOM_ERR("map buffer");
+        tbm_surface_destroy(buffer);
         return NULL;
      }
 
@@ -1602,6 +1637,36 @@ _e_eom_util_calculate_fullsize(int src_h, int src_v, int dst_size_h, int dst_siz
         *dst_h = dst_size_h * src_h / src_v;
         *dst_y = (dst_size_v - *dst_h) / 2;
      }
+}
+
+static Eina_Bool
+_e_eom_util_add_comp_object_redirected_hook(E_Client *ec)
+{
+   E_EomCompObjectInterceptHookData *hook_data = NULL;
+   E_Comp_Object_Intercept_Hook *hook = NULL;
+
+   hook_data = E_NEW(E_EomCompObjectInterceptHookData, 1);
+   GOTOIFTRUE(hook_data == NULL, err, "hook_data = NULL");
+
+   hook_data->ec = ec;
+
+   hook = e_comp_object_intercept_hook_add(E_COMP_OBJECT_INTERCEPT_HOOK_SHOW_HELPER,
+                                           _e_eom_cb_comp_object_redirected,
+                                           hook_data);
+   GOTOIFTRUE(hook == NULL, err, "hook = NULL");
+
+   hook_data->hook = hook;
+
+   g_eom->comp_object_intercept_hooks = eina_list_append(g_eom->comp_object_intercept_hooks,
+                                                         hook_data);
+
+   EOM_DBG("_e_eom_redirected_hook have been added");
+   return EINA_TRUE;
+
+err:
+   if (hook_data)
+     free(hook_data);
+   return EINA_FALSE;
 }
 
 static int

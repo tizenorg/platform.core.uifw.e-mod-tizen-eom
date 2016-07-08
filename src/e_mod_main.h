@@ -62,6 +62,7 @@ typedef struct _E_Eom_Out_Mode E_EomOutMode, *E_EomOutModePtr;
 typedef struct _E_Eom_Output E_EomOutput, *E_EomOutputPtr;
 typedef struct _E_Eom_Client_Buffer E_EomClientBuffer, *E_EomClientBufferPtr;
 typedef struct _E_Eom_Client E_EomClient, *E_EomClientPtr;
+typedef struct _E_Eom_Comp_Object_Intercept_Hook_Data E_EomCompObjectInterceptHookData;
 
 typedef enum
 {
@@ -128,10 +129,11 @@ struct _E_Eom
    int width;
    int height;
 
+   unsigned int output_count;
+   Eina_List *outputs;
    Eina_List *clients;
    Eina_List *handlers;
-   Eina_List *outputs;
-   unsigned int output_count;
+   Eina_List *comp_object_intercept_hooks;
 };
 
 struct _E_Eom_Client
@@ -156,6 +158,12 @@ struct _E_Eom_Client_Buffer
    tbm_surface_h tbm_buffer;
 
    unsigned long stamp;
+};
+
+struct _E_Eom_Comp_Object_Intercept_Hook_Data
+{
+   E_Client *ec;
+   E_Comp_Object_Intercept_Hook *hook;
 };
 
 static Eina_Bool _e_eom_init();
@@ -188,6 +196,7 @@ static void _e_eom_cb_commit(tdm_output *output EINA_UNUSED, unsigned int sequen
                              void *user_data);
 static void _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type type,
                                                tdm_value value, void *user_data);
+static Eina_Bool _e_eom_cb_comp_object_redirected(void *data, E_Client *ec);
 
 static Eina_Bool _e_eom_output_init(tdm_display *dpy);
 static const tdm_output_mode *_e_eom_output_get_best_mode(tdm_output *output);
@@ -212,6 +221,7 @@ static E_EomClientBufferPtr _e_eom_util_create_client_buffer(E_Comp_Wl_Buffer *w
 static void _e_eom_util_calculate_fullsize(int src_h, int src_v, int dst_size_h, int dst_size_v,
                                            int *dst_x, int *dst_y, int *dst_w, int *dst_h);
 static tbm_surface_h _e_eom_util_get_output_surface(const char *name);
+static Eina_Bool _e_eom_util_add_comp_object_redirected_hook(E_Client *ec);
 static int _e_eom_util_get_stamp();
 #if 0
 static void _e_eom_util_draw(tbm_surface_h surface);
