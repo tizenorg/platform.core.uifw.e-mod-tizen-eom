@@ -999,6 +999,10 @@ _e_eom_output_init(tdm_display *dpy)
               goto err;
           }
 
+#ifdef HAVE_HWC
+        e_comp_hwc_disable_output_hwc_rendering(i, 0);
+#endif
+
         if (status == TDM_OUTPUT_CONN_STATUS_DISCONNECTED)
           {
              EOM_DBG("create(%d)output, type:%d, status:%d",

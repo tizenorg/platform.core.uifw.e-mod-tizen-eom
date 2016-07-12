@@ -51,6 +51,25 @@ if test "x${have_wayland_only}" != "xno"; then
   AC_DEFINE_UNQUOTED([HAVE_WAYLAND_ONLY],[1],[enable wayland-only version of enlightenment])
 fi
 
+have_hwc=no
+AC_ARG_ENABLE([hwc],
+  AS_HELP_STRING([--enable-hwc],[enable hwc @<:@default=enabled@:>@]),
+  [e_cv_want_hwc=$enableval],
+  [e_cv_want_hwc=yes])
+AC_MSG_CHECKING([whether HWC support is enabled])
+AC_MSG_RESULT([${e_cv_want_hwc}])
+
+if test "x$e_cv_want_hwc" != "xno";then
+  PKG_CHECK_MODULES([HWC], [gbm],
+    [
+      have_hwc=yes
+      AC_DEFINE_UNQUOTED([HAVE_HWC],[1],[enable hwc support])
+    ])
+else
+  have_hwc=no
+fi
+AM_CONDITIONAL([HAVE_HWC], [test "x${have_hwc}" = "xyes"])
+
 dnl ========================================================================
 # checks for wayland only argument
 dnl ========================================================================
