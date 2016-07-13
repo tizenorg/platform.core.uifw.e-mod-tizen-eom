@@ -587,7 +587,7 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
 
    plug = value.u32;
 
-   if (plug == TDM_OUTPUT_CONN_STATUS_CONNECTED || plug == TDM_OUTPUT_CONN_STATUS_MODE_SETTED)
+   if (plug == TDM_OUTPUT_CONN_STATUS_CONNECTED)
      {
         unsigned int mmWidth, mmHeight, subpixel;
         const tdm_output_mode *mode;
@@ -653,7 +653,7 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
                }
           }
      }
-   else /*TDM_OUTPUT_CONN_STATUS_DISCONNECTED*/
+   else if (plug == TDM_OUTPUT_CONN_STATUS_DISCONNECTED)
      {
         if (eom_output->state == MIRROR)
           _e_eom_output_stop_mirror(eom_output);
