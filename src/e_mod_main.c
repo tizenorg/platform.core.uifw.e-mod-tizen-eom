@@ -388,11 +388,28 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
                    "resource is NULL");
 
 /*
-   EOM_DBG("wl_buff:%dx%d type:%d",
-            external_wl_buffer->w,
-            external_wl_buffer->h,
-            external_wl_buffer->type);
+   EOM_DBG("wl_buff:%p type:%d %dx%d ",
+           external_wl_buffer,
+           external_wl_buffer->type,
+           external_wl_buffer->w,
+           external_wl_buffer->h,
+           );
 */
+
+   /* Since Enlightenment client has reconfigured its window to fit
+    * external output resolution and Enlightenment no nothing about
+    * external outputs Enlightenment sees that client's resolution
+    * differs form main screen resolution. Therefore, Enlightenment
+    * is trying to resize it back to main screen resolution. It uses
+    * timer for that purpose. To forbid it just delte the timer */
+
+   /* TODO: it works but maybe there is better solution exists ?
+    * Also I do not know how it affects on performance */
+   if (ec->map_timer)
+     {
+        EOM_DBG("delete map_timer");
+        E_FREE_FUNC(ec->map_timer, ecore_timer_del);
+     }
 
    /* TODO: support buffers smaller then output resolution */
    if (external_wl_buffer->w != eom_output->width ||
