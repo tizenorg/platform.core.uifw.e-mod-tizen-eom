@@ -15,6 +15,10 @@ E_API E_Module_Api e_modapi = { E_MODULE_API_VERSION, "EOM Module" };
 static E_EomPtr g_eom = NULL;
 Eina_Bool eom_server_debug_on = EINA_FALSE;
 
+#ifdef DUMP_PRESENTATION
+static int dump = 0;
+#endif
+
 static const struct wl_eom_interface _e_eom_wl_implementation =
 {
    _e_eom_cb_wl_request_set_attribute,
@@ -198,7 +202,9 @@ _e_eom_cb_wl_bind(struct wl_client *client, void *data, uint32_t version, uint32
    new_client->current = EINA_FALSE;
    new_client->output_id = -1;
    new_client->ec = NULL;
-   new_client->buffers = NULL;
+   new_client->buffers_show = NULL;
+   new_client->buffers_del = NULL;
+   new_client->first_buffer = EINA_TRUE;
 
    g_eom->clients = eina_list_append(g_eom->clients, new_client);
 }
@@ -225,11 +231,11 @@ _e_eom_cb_wl_resource_destory(struct wl_resource *resource)
    output = _e_eom_output_get_by_id(client->output_id);
    GOTOIFTRUE(output == NULL, end2, "output is NULL");
 
-   _e_eom_client_free_buffers(client);
-
    _e_eom_output_state_set_mode(output, EOM_OUTPUT_MODE_MIRROR);
    ret = _e_eom_output_state_set_attribute(output, EOM_OUTPUT_ATTRIBUTE_NONE);
    (void)ret;
+
+   _e_eom_client_free_buffers(client);
 
    /* TODO: process case when output is not connected */
    if (output->state == NONE)
@@ -276,7 +282,7 @@ _e_eom_cb_ecore_drm_output(void *data EINA_UNUSED, int type EINA_UNUSED, void *e
    Ecore_Drm_Event_Output *e = NULL;
    char buff[PATH_MAX];
 
-   if (!(e = event))  return ECORE_CALLBACK_PASS_ON;;
+   if (!(e = event))  return ECORE_CALLBACK_PASS_ON;
 
    EOM_DBG("id:%d (x,y,w,h):(%d,%d,%d,%d) (w_mm,h_mm):(%d,%d) refresh:%d subpixel_order:%d transform:%d make:%s model:%s name:%s plug:%d",
             e->id, e->x, e->y, e->w, e->h, e->phys_width, e->phys_height, e->refresh, e->subpixel_order, e->transform, e->make, e->model, e->name, e->plug);
@@ -428,34 +434,20 @@ _e_eom_cb_client_buffer_change(void *data, int type, void *event)
                    ECORE_CALLBACK_PASS_ON,
                    "Client tbm buffer is NULL");
 
-   EOM_DBG("tbm_buffer %p", external_tbm_buffer);
+   /* EOM_DBG("tbm_buffer %p", external_tbm_buffer); */
 
 #if 0
    _e_eom_util_draw(external_tbm_buffer);
 #endif
 
-   /* mmap that buffer to get width and height for test's sake */
-   /*
-   memset(&surface_info, 0, sizeof(tbm_surface_info_s));
-   ret = tbm_surface_map(external_tbm_buffer, TBM_SURF_OPTION_READ |
-                       TBM_SURF_OPTION_WRITE, &surface_info);
-   if (ret != TBM_SURFACE_ERROR_NONE)
-     {
-        EOM_ERR("mmap buffer: %d", ret);
-        return ECORE_CALLBACK_PASS_ON;
-     }
-
-   EOM_DBG("tbm_buffer: %dx%d", surface_info.width, surface_info.height);
-
-   tbm_surface_unmap(external_tbm_buffer);
-   */
-
-   client_buffer = _e_eom_util_create_client_buffer(external_wl_buffer, external_tbm_buffer);
+   EOM_DBG("BUFF_CHANGE >>>>>>>>>>");
+   client_buffer = _e_eom_util_create_client_buffer(eom_client, external_wl_buffer, external_tbm_buffer);
    RETURNVALIFTRUE(client_buffer == NULL,
                    ECORE_CALLBACK_PASS_ON,
                    "Alloc client buffer");
 
    _e_eom_client_add_buffer(eom_client, client_buffer);
+   EOM_DBG("BUFF_CHANGE <<<<<<<<<<");
 
    eom_output->state = PRESENTATION;
 
@@ -534,20 +526,44 @@ _e_eom_cb_commit(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUS
      {
         eom_client = _e_eom_client_get_current_by_id(eom_output->id);
 
+        EOM_DBG("COMMIT +++++++++++++++>");
+
         client_buffer = _e_eom_client_get_buffer(eom_client);
         if (client_buffer == NULL)
           {
              external_buffer = eom_output->dummy_buffer;
-             EOM_DBG("dummy buffer was substitute");
+             EOM_DBG("substitute dummy buffer");
           }
         else
           external_buffer = client_buffer->tbm_buffer;
 
+#ifdef DRAW_DUMMY
+        EOM_DBG("COMMIT draw and set dummy");
+
+        _e_eom_util_draw(eom_output->dummy_buffer);
+        external_buffer = eom_output->dummy_buffer;
+#endif
+
+#ifdef DUMP_PRESENTATION
+        if (dump < 29)
+        {
+           tbm_surface_internal_dump_buffer(external_buffer, "kyky");
+           dump++;
+        }
+        else
+        {
+           tbm_surface_internal_dump_end();
+           EOM_DBG("dump end");
+        }
+#endif
+
         err = tdm_layer_set_buffer(eom_output->layer, external_buffer);
-        RETURNIFTRUE(err != TDM_ERROR_NONE, "commit event: presentation: set client buffer");
+        RETURNIFTRUE(err != TDM_ERROR_NONE, "commit event: presentation: set buffer");
 
         err = tdm_output_commit(eom_output->output, 0, _e_eom_cb_commit, eom_output);
         RETURNIFTRUE(err != TDM_ERROR_NONE, "commit event: presentation: commit");
+
+        EOM_DBG("COMMIT <+++++++++++++++");
      }
 }
 
@@ -926,7 +942,6 @@ _e_eom_cb_comp_object_redirected(void *data, E_Client *ec)
    E_EomCompObjectInterceptHookData *hook_data;
 
    EOM_DBG("_e_eom_cb_comp_object_redirected");
-
    RETURNVALIFTRUE(data == NULL, EINA_TRUE, "data is NULL");
 
    hook_data = (E_EomCompObjectInterceptHookData* )data;
@@ -1531,24 +1546,35 @@ _e_eom_util_create_buffer(int width, int height, int format, int flags)
 }
 
 static E_EomClientBufferPtr
-_e_eom_util_create_client_buffer(E_Comp_Wl_Buffer *wl_buffer, tbm_surface_h tbm_buffer)
+_e_eom_util_create_client_buffer(E_EomClientPtr client, E_Comp_Wl_Buffer *wl_buffer, tbm_surface_h tbm_buffer)
 {
    E_EomClientBufferPtr buffer = NULL;
 
    buffer = E_NEW(E_EomClientBuffer, 1);
-   if(buffer == NULL)
-      return NULL;
+   RETURNVALIFTRUE(buffer == NULL, NULL, "Allocate new client buffer")
+
+   /* TODO: Internal and External frame rate are same */
+
+   /* Forbid E sending 'wl_buffer_send_release' event to external clients */
+   wl_buffer->busy++;
 
    buffer->wl_buffer = wl_buffer;
    buffer->tbm_buffer = tbm_buffer;
-   /* TODO: It is not used right now */
+
+   EOM_DBG("new client buffer wl:%p tbm:%p",
+           buffer->wl_buffer, buffer->tbm_buffer);
+
+#ifdef DUMP_PRESENTATION
+   if (dump == 0)
+     {
+        EOM_DBG("dump start");
+        tbm_surface_internal_dump_start("/A", wl_buffer->w, wl_buffer->h, 30);
+     }
+#endif
+
+#if 0
    buffer->stamp = _e_eom_util_get_stamp();
-
-   /* I am not sure if it is necessary */
-   tbm_surface_internal_ref(tbm_buffer);
-
-   /* TODO: Do we need reference that buffer? */
-   /* e_comp_wl_buffer_reference(buffer->tbm_buffer, NULL);*/
+#endif
 
    return buffer;
 }
@@ -1683,6 +1709,7 @@ err:
    return EINA_FALSE;
 }
 
+#if 0
 static int
 _e_eom_util_get_stamp()
 {
@@ -1692,41 +1719,52 @@ _e_eom_util_get_stamp()
 
    return ((tp.tv_sec * 1000) + (tp.tv_nsec / 1000));
 }
+#endif
 
-#if 0
+#ifdef DRAW_DUMMY
+
+int square_x = 0;
+int square_w = 200;
+
 static void
 _e_eom_util_draw(tbm_surface_h surface)
 {
+   unsigned char rw = 0, gw = 0, bw = 0, aw = 0;
+   unsigned char r = 255, g = 255, b = 255, a = 0;
+
+   unsigned int *mm = NULL;
    int i = 0, j = 0;
-
-   tbm_bo bo = tbm_surface_internal_get_bo(surface, 0);
-   RETURNIFTRUE(bo == NULL, "bo is NULL");
-
-   unsigned int *mm = (unsigned int *)tbm_bo_map(bo, TBM_DEVICE_CPU, TBM_OPTION_READ|TBM_OPTION_WRITE).ptr;
-   RETURNIFTRUE(mm == NULL, "mm is NULL");
-
-   unsigned char r = 0;
-   unsigned char g = 255;
-   unsigned char b = 0;
-   unsigned char a = 0;
 
    int w = (int)tbm_surface_get_width(surface);
    int h = (int)tbm_surface_get_height(surface);
 
-   for (i = 0; i < w; i++)
-     for (j = 0; j < h/2; j++)
+   tbm_bo bo = tbm_surface_internal_get_bo(surface, 0);
+   RETURNIFTRUE(bo == NULL, "bo is NULL");
+
+   mm = (unsigned int *)tbm_bo_map(bo, TBM_DEVICE_CPU, TBM_OPTION_READ|TBM_OPTION_WRITE).ptr;
+   RETURNIFTRUE(mm == NULL, "mm is NULL");
+
+   for (i = 0; i < h; i++)
+     for (j = 0; j < w; j++)
        {
-          mm[i*w + j] = r << 24 | g << 16 | b << 8 | a;
+          if (j > square_x && j < square_x + square_w)
+            mm[i*w + j] = r << 24  | g << 16  | b << 8  | a;
+          else
+            mm[i*w + j] = rw << 24 | gw << 16 | bw << 8 | aw;
        }
+
+   square_x += 1;
+   if (square_x + square_w> w)
+     square_x = 0;
+
+   tbm_bo_unmap(bo);
 }
 #endif
 
 static void
 _e_eom_client_add_buffer(E_EomClientPtr client, E_EomClientBufferPtr buffer)
 {
-   _e_eom_client_free_buffers(client);
-
-   client->buffers = eina_list_append(client->buffers, buffer);
+   client->buffers_show = eina_list_append(client->buffers_show, buffer);
 }
 
 static void
@@ -1735,18 +1773,38 @@ _e_eom_client_free_buffers(E_EomClientPtr client)
    E_EomClientBufferPtr buffer = NULL;
    Eina_List *l;
 
-   EINA_LIST_FOREACH(client->buffers, l, buffer)
+   EINA_LIST_FOREACH(client->buffers_show, l, buffer)
      {
         if (buffer)
           {
-             /* I am not sure if it is necessary */
+             client->buffers_show = eina_list_remove(client->buffers_show, buffer);
+
+             /* TODO: not sure if it is necessary */
              if (buffer->tbm_buffer)
                tbm_surface_internal_unref(buffer->tbm_buffer);
 
-             /* TODO: Do we need reference that buffer? */
-             /* e_comp_wl_buffer_reference(buffer->tbm_buffer, NULL); */
+             /* TODO: not sure if it is necessary */
+             if (buffer->wl_buffer)
+               buffer->wl_buffer->busy--;
 
-             client->buffers = eina_list_remove(client->buffers, buffer);
+             E_FREE(buffer);
+          }
+     }
+
+   EINA_LIST_FOREACH(client->buffers_del, l, buffer)
+     {
+        if (buffer)
+          {
+             client->buffers_del= eina_list_remove(client->buffers_del, buffer);
+
+             /* TODO: not sure if it is necessary */
+             if (buffer->tbm_buffer)
+               tbm_surface_internal_unref(buffer->tbm_buffer);
+
+             /* TODO: not sure if it is necessary */
+             if (buffer->wl_buffer)
+               buffer->wl_buffer->busy--;
+
              E_FREE(buffer);
           }
      }
@@ -1755,17 +1813,102 @@ _e_eom_client_free_buffers(E_EomClientPtr client)
 static E_EomClientBufferPtr
 _e_eom_client_get_buffer(E_EomClientPtr client)
 {
-   E_EomClientBufferPtr buffer = NULL;
+   E_EomClientBufferPtr show_buffer = NULL;
+   E_EomClientBufferPtr prev_buffer = NULL;
+   E_EomClientBufferPtr del_buffer = NULL;
    Eina_List *l;
 
-   /* There must be only one buffer */
-   EINA_LIST_FOREACH(client->buffers, l, buffer)
+   /* TODO: is it possible that a client has only one buffet to draw too? */
+   RETURNVALIFTRUE(eina_list_count(client->buffers_show) == 0, NULL,
+                   "eom client (%p) do not have buffers to be shown", client);
+
+   /* If there is only one buffer we have slow client, just return the buffer */
+   if (eina_list_count(client->buffers_show) == 1)
      {
-        if (buffer)
-          return buffer;
+        show_buffer = eina_list_nth(client->buffers_show, 0);
+        RETURNVALIFTRUE(show_buffer == NULL, NULL,
+                        "eom client (%p) buffer is NULL", client);
+
+        EOM_DBG("one wl:%p tbm:%p", show_buffer->wl_buffer, show_buffer->tbm_buffer);
+
+        return show_buffer;
      }
 
-   return NULL;
+   if (client->first_buffer == EINA_TRUE)
+     {
+        show_buffer= eina_list_nth(client->buffers_show, 0);
+        RETURNVALIFTRUE(show_buffer == NULL, NULL, "eom client (%p) first buffer is NULL", client);
+
+        EOM_DBG("first wl:%p tbm:%p", show_buffer->wl_buffer, show_buffer->tbm_buffer);
+
+        /* I am not sure if it is necessary */
+        EOM_DBG("ref first");
+        tbm_surface_internal_ref(show_buffer->tbm_buffer);
+
+        client->first_buffer = EINA_FALSE;
+        return show_buffer;
+     }
+
+   EINA_LIST_FOREACH(client->buffers_del, l, del_buffer)
+     {
+        if (del_buffer)
+          {
+             client->buffers_del = eina_list_remove(client->buffers_del, del_buffer);
+
+             if (del_buffer->wl_buffer)
+               {
+                  del_buffer->wl_buffer->busy--;
+                  EOM_DBG("wl_buffer:%p busy:%d", del_buffer->wl_buffer, del_buffer->wl_buffer->busy);
+                  if (del_buffer->wl_buffer->busy == 0)
+                    {
+                       if (del_buffer->wl_buffer->type != E_COMP_WL_BUFFER_TYPE_TBM)
+                         {
+                            if (!wl_resource_get_client(del_buffer->wl_buffer->resource))
+                              {
+                                 EOM_DBG("wl_buffer->resource is NULL");
+                                 return NULL;
+                              }
+
+                            wl_buffer_send_release(del_buffer->wl_buffer->resource);
+                         }
+                    }
+                }
+
+             EOM_DBG("del wl:%p tbm:%p", del_buffer->wl_buffer, del_buffer->tbm_buffer);
+
+             if (del_buffer->tbm_buffer)
+               {
+                  EOM_DBG("before old unref");
+                  tbm_surface_internal_unref(del_buffer->tbm_buffer);
+               }
+
+             /* TODO: should wl_buffer and tbm_surface be deleted here? */
+             E_FREE(del_buffer);
+          }
+     }
+
+   /* TODO: case of 2 or n buffers */
+   prev_buffer = eina_list_nth(client->buffers_show, 0);
+   RETURNVALIFTRUE(prev_buffer == NULL, NULL, "eom client (%p) old_buffer is NULL", client);
+
+   EOM_DBG("old wl:%p tbm:%p", prev_buffer->wl_buffer, prev_buffer->tbm_buffer);
+
+   client->buffers_show = eina_list_remove(client->buffers_show, prev_buffer);
+   client->buffers_del = eina_list_append(client->buffers_del, prev_buffer);
+
+   /* Take next buffer to be shown on external output */
+   show_buffer = eina_list_nth(client->buffers_show, 0);
+   RETURNVALIFTRUE(show_buffer == NULL, NULL, "eom client (%p) next buffer is NULL", client);
+
+   EOM_DBG("show wl:%p tbm:%p", show_buffer->wl_buffer, show_buffer->tbm_buffer);
+
+   if (show_buffer->tbm_buffer)
+     {
+        EOM_DBG("show ref");
+        tbm_surface_internal_ref(show_buffer->tbm_buffer);
+     }
+
+   return show_buffer;
 }
 
 static E_EomClientPtr
