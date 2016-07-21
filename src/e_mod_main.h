@@ -3,6 +3,14 @@
 
 #include "eom-server-protocol.h"
 
+#if 0
+  #define DRAW_DUMMY
+#endif
+
+#if 0
+  #define DUMP_PRESENTATION
+#endif
+
 extern Eina_Bool eom_server_debug_on;
 
 #define ALEN(array) (sizeof(array) / sizeof(array)[0])
@@ -50,8 +58,29 @@ if (statement)    \
 
 /* E Module */
 E_API extern E_Module_Api e_modapi;
+
+/**
+ * @brief Called when Enlightenment is going to load the module
+ * @param[in] m  structure which defines Enlightenment module
+ * @see e_modapi_shutdown()
+ * @see e_modapi_save()
+ */
 E_API void *e_modapi_init(E_Module *m);
+
+/**
+ * @brief Called when Enlightenment is going to unload the module
+ * @param[in] m  structure which defines Enlightenment module
+ * @see e_modapi_init()
+ * @see e_modapi_save()
+ */
 E_API int   e_modapi_shutdown(E_Module *m);
+
+/**
+ * @brief Called when Enlightenment is going to save some info in the module
+ * @param[in] m  structure which defines Enlightenment module
+ * @see e_modapi_init()
+ * @see e_modapi_shutdown()
+ */
 E_API int   e_modapi_save(E_Module *m);
 
 #define NUM_MAIN_BUF 2
@@ -109,6 +138,7 @@ struct _E_Eom_Output
 
    /* mirror mode data */
    tbm_surface_h dst_buffers[NUM_MAIN_BUF];
+   tbm_surface_h src_buffer;
    int current_buffer;
    int pp_buffer;
 
@@ -149,7 +179,9 @@ struct _E_Eom_Client
    /*TODO: As I understand there are cannot be more than one client buffer on
     *server side, but for future extendabilty store it in the list */
    /*Client's buffers */
-   Eina_List *buffers;
+   Eina_List *buffers_show;
+   Eina_List *buffers_del;
+   Eina_Bool first_buffer;
 };
 
 struct _E_Eom_Client_Buffer
@@ -216,14 +248,17 @@ static Eina_Bool _e_eom_pp_is_needed(int src_w, int src_h, int dst_w, int dst_h)
 
 static void _e_eom_util_get_debug_env();
 static tbm_surface_h _e_eom_util_create_buffer(int width, int height, int format, int flags);
-static E_EomClientBufferPtr _e_eom_util_create_client_buffer(E_Comp_Wl_Buffer *wl_buffer,
-                                                        tbm_surface_h tbm_buffer);
+static E_EomClientBufferPtr _e_eom_util_create_client_buffer(E_EomClientPtr client,
+                                                             E_Comp_Wl_Buffer *wl_buffer,
+                                                             tbm_surface_h tbm_buffer);
 static void _e_eom_util_calculate_fullsize(int src_h, int src_v, int dst_size_h, int dst_size_v,
                                            int *dst_x, int *dst_y, int *dst_w, int *dst_h);
 static tbm_surface_h _e_eom_util_get_output_surface(const char *name);
 static Eina_Bool _e_eom_util_add_comp_object_redirected_hook(E_Client *ec);
-static int _e_eom_util_get_stamp();
 #if 0
+static int _e_eom_util_get_stamp();
+#endif
+#ifdef DRAW_DUMMY
 static void _e_eom_util_draw(tbm_surface_h surface);
 #endif
 
