@@ -57,8 +57,6 @@ static const char *eom_conn_types[] =
    "DSI",
 };
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////
-
 static inline eom_output_mode_e
 _e_eom_output_state_get_mode(E_EomOutputPtr output)
 {
@@ -729,10 +727,9 @@ static void
 _e_eom_cb_wl_request_set_attribute(struct wl_client *client, struct wl_resource *resource, uint32_t output_id, uint32_t attribute)
 {
    eom_error_e eom_error = EOM_ERROR_NONE;
-   E_EomClientPtr eom_client = NULL, iterator = NULL;
+   E_EomClientPtr eom_client = NULL, current_eom_client = NULL, iterator = NULL;
    E_EomOutputPtr eom_output = NULL;
    Eina_Bool changes = EINA_FALSE;
-   Eina_Bool mode_change = EINA_FALSE;
    Eina_Bool ret = EINA_FALSE;
    Eina_List *l;
 
@@ -740,11 +737,12 @@ _e_eom_cb_wl_request_set_attribute(struct wl_client *client, struct wl_resource 
    RETURNIFTRUE(eom_client == NULL, "eom_client is NULL");
 
    /* Bind the client with a concrete output */
-   if (eom_client->output_id  == -1)
-     eom_client->output_id = output_id;
+   eom_client->output_id = output_id;
 
    eom_output = _e_eom_output_get_by_id(output_id);
    GOTOIFTRUE(eom_output == NULL, no_output, "eom_output is NULL");
+
+   EOM_DBG("Set attribute:%d", attribute);
 
    if (eom_client->current == EINA_TRUE && eom_output->id == eom_client->output_id)
      {
@@ -754,6 +752,7 @@ _e_eom_cb_wl_request_set_attribute(struct wl_client *client, struct wl_resource 
      }
    else
      {
+        /* A client is trying to set new attribute */
         ret = _e_eom_output_state_set_attribute(eom_output, attribute);
         if (ret == EINA_FALSE)
           {
@@ -763,23 +762,25 @@ _e_eom_cb_wl_request_set_attribute(struct wl_client *client, struct wl_resource 
              goto end;
           }
 
-        eom_client->output_id = output_id;
         changes = EINA_TRUE;
+     }
+
+   /* If there was no new changes applied do nothing */
+   if (changes == EINA_FALSE)
+     {
+        EOM_DBG("no new changes");
+        return;
      }
 
    EOM_DBG("set attribute OK");
 
-   /* If client has set EOM_OUTPUT_ATTRIBUTE_NONE, eom will be
-    * switched to mirror mode
-    */
+   /* If client has set EOM_OUTPUT_ATTRIBUTE_NONE switching to mirror mode */
    if (attribute == EOM_OUTPUT_ATTRIBUTE_NONE && eom_output->state != MIRROR)
      {
         eom_output->state = MIRROR;
         eom_client->current = EINA_FALSE;
 
         _e_eom_output_state_set_mode(eom_output, EOM_OUTPUT_ATTRIBUTE_NONE);
-        mode_change = EINA_TRUE;
-
         ret = _e_eom_output_state_set_attribute(eom_output, EOM_OUTPUT_ATTRIBUTE_NONE);
         (void)ret;
 
@@ -793,63 +794,75 @@ _e_eom_cb_wl_request_set_attribute(struct wl_client *client, struct wl_resource 
 
         ret = _e_eom_output_start_pp(eom_output);
         GOTOIFTRUE(ret == EINA_FALSE, end,
-                   "Restore mirror mode after a client disconnection");
-        goto end;
+                   "Restore mirror mode after disconnection of the client");
+
+        /* If mirror mode has been ran notify all clients about that */
+        EOM_DBG("client set NONE attribute send new info to previous current client");
+        EINA_LIST_FOREACH(g_eom->clients, l, iterator)
+          {
+             if (iterator->output_id == output_id)
+               {
+                  wl_eom_send_output_attribute(iterator->resource,
+                                               eom_output->id,
+                                               _e_eom_output_state_get_attribute(eom_output),
+                                               _e_eom_output_state_get_attribute_state(eom_output),
+                                               EOM_ERROR_NONE);
+
+                  wl_eom_send_output_mode(iterator->resource,
+                                          eom_output->id,
+                                          _e_eom_output_state_get_mode(eom_output));
+               }
+          }
+
+        return;
      }
 
 end:
+   /* If client was not able to set attribute then send LOST event
+    * to it and return */
+   /* TODO: I think it is bad to send LOST event in that case
+    * Client must process eom_errors */
+   if (eom_error == EOM_ERROR_INVALID_PARAMETER)
+     {
+        EOM_DBG("client failed to set attribute");
+
+        wl_eom_send_output_attribute(eom_client->resource,
+                                     eom_output->id,
+                                     _e_eom_output_state_get_attribute(eom_output),
+                                     EOM_OUTPUT_ATTRIBUTE_STATE_LOST,
+                                     eom_error);
+        return;
+     }
+
+   /* Send changes to the caller-client */
    wl_eom_send_output_attribute(eom_client->resource,
                                 eom_output->id,
                                 _e_eom_output_state_get_attribute(eom_output),
                                 _e_eom_output_state_get_attribute_state(eom_output),
                                 eom_error);
 
-   /* Notify eom clients that eom state has been changed */
-   if (changes == EINA_TRUE)
+   /* Send changes to previous current client */
+   if (eom_client->current == EINA_FALSE &&
+       (current_eom_client = _e_eom_client_get_current_by_id(eom_output->id)))
      {
-        EINA_LIST_FOREACH(g_eom->clients, l, iterator)
-          {
-             if (iterator && iterator->resource == resource)
-               continue;
+        current_eom_client->current = EINA_FALSE;
 
-             if (iterator && iterator->output_id == eom_output->id)
-               {
-                  iterator->current = 0;
+        EOM_DBG("client failed to set attribute");
 
-                  if (eom_output->state == MIRROR)
-                    {
-                       wl_eom_send_output_attribute(iterator->resource,
-                                                    eom_output->id,
-                                                    _e_eom_output_state_get_attribute(eom_output),
-                                                    _e_eom_output_state_get_attribute_state(eom_output),
-                                                    EOM_ERROR_NONE);
-                    }
-                  else
-                    {
-                       wl_eom_send_output_attribute(iterator->resource,
-                                                    eom_output->id,
-                                                    _e_eom_output_state_get_attribute(eom_output),
-                                                    EOM_OUTPUT_ATTRIBUTE_STATE_LOST,
-                                                    EOM_ERROR_NONE);
-                    }
-
-                  if (mode_change == EINA_TRUE)
-                    {
-                       wl_eom_send_output_mode(iterator->resource,
-                                               eom_output->id,
-                                               _e_eom_output_state_get_mode(eom_output));
-                    }
-               }
-          }
-
-        eom_client->current= EINA_TRUE;
+        wl_eom_send_output_attribute(current_eom_client->resource,
+                                     eom_output->id,
+                                     _e_eom_output_state_get_attribute(eom_output),
+                                     EOM_OUTPUT_ATTRIBUTE_STATE_LOST,
+                                     EOM_ERROR_NONE);
      }
+
+   /* Set the client as current client of the eom_output */
+   eom_client->current= EINA_TRUE;
 
    return;
 
-   /* Get here if EOM does not have output with output_id is */
+   /* Get here if EOM does not have output referred by output_id */
 no_output:
-
    wl_eom_send_output_attribute(eom_client->resource,
                                 output_id,
                                 EOM_OUTPUT_ATTRIBUTE_NONE,
@@ -1878,7 +1891,7 @@ _e_eom_client_get_buffer(E_EomClientPtr client)
 
              if (del_buffer->tbm_buffer)
                {
-                  EOM_DBG("before old unref");
+                  EOM_DBG("del unref");
                   tbm_surface_internal_unref(del_buffer->tbm_buffer);
                }
 
