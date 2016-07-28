@@ -33,11 +33,12 @@ static const struct wl_message wl_eom_events[] = {
 	{ "output_type", "uuu", types + 0 },
 	{ "output_mode", "uu", types + 0 },
 	{ "output_attribute", "uuuu", types + 0 },
+	{ "output_set_window", "uu", types + 0 },
 };
 
 WL_EXPORT const struct wl_interface wl_eom_interface = {
 	"wl_eom", 1,
 	4, wl_eom_requests,
-	5, wl_eom_events,
+	6, wl_eom_events,
 };
 

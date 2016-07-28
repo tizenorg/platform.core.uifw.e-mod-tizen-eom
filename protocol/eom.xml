@@ -124,6 +124,11 @@
       <arg name="error" type="uint"/>
     </event>
 
+    <event name="output_set_window">
+      <arg name="output_id" type="uint"/>
+      <arg name="error" type="uint"/>
+    </event>
+
   </interface>
 </protocol>
 

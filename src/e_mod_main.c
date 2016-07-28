@@ -1430,8 +1430,6 @@ _e_eom_window_set_internal(struct wl_resource *resource, int output_id, E_Client
    eom_client = _e_eom_client_get_by_resource(resource);
    RETURNIFTRUE(eom_client == NULL, "eom_client is NULL");
 
-   RETURNIFTRUE(eom_client->current == EINA_FALSE, "not current client is going to set its window");
-
    eom_output = _e_eom_output_get_by_id(output_id);
    RETURNIFTRUE(eom_output == NULL, "eom_output is NULL");
 
@@ -1446,6 +1444,11 @@ _e_eom_window_set_internal(struct wl_resource *resource, int output_id, E_Client
 
    /* ec is used in buffer_change callback for distinguishing external ec and its buffers */
    eom_client->ec = ec;
+
+   if (eom_client->current == EINA_TRUE)
+     wl_eom_send_output_set_window(resource, eom_output->id, WL_EOM_ERROR_NONE);
+   else
+     wl_eom_send_output_set_window(resource, eom_output->id, WL_EOM_ERROR_OUTPUT_OCCUPIED);
 }
 
 static Eina_Bool

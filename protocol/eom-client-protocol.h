@@ -152,6 +152,7 @@ enum wl_eom_attribute_state {
  * @output_type: (none)
  * @output_mode: (none)
  * @output_attribute: (none)
+ * @output_set_window: (none)
  *
  * ***** TODO ******
  */
@@ -217,6 +218,15 @@ struct wl_eom_listener {
 				 uint32_t attribute,
 				 uint32_t attribute_state,
 				 uint32_t error);
+	/**
+	 * output_set_window - (none)
+	 * @output_id: (none)
+	 * @error: (none)
+	 */
+	void (*output_set_window)(void *data,
+				  struct wl_eom *wl_eom,
+				  uint32_t output_id,
+				  uint32_t error);
 };
 
 static inline int

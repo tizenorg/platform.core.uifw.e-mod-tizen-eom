@@ -196,12 +196,14 @@ struct wl_eom_interface {
 #define WL_EOM_OUTPUT_TYPE	2
 #define WL_EOM_OUTPUT_MODE	3
 #define WL_EOM_OUTPUT_ATTRIBUTE	4
+#define WL_EOM_OUTPUT_SET_WINDOW	5
 
 #define WL_EOM_OUTPUT_COUNT_SINCE_VERSION	1
 #define WL_EOM_OUTPUT_INFO_SINCE_VERSION	1
 #define WL_EOM_OUTPUT_TYPE_SINCE_VERSION	1
 #define WL_EOM_OUTPUT_MODE_SINCE_VERSION	1
 #define WL_EOM_OUTPUT_ATTRIBUTE_SINCE_VERSION	1
+#define WL_EOM_OUTPUT_SET_WINDOW_SINCE_VERSION	1
 
 static inline void
 wl_eom_send_output_count(struct wl_resource *resource_, uint32_t count)
@@ -231,6 +233,12 @@ static inline void
 wl_eom_send_output_attribute(struct wl_resource *resource_, uint32_t output_id, uint32_t attribute, uint32_t attribute_state, uint32_t error)
 {
 	wl_resource_post_event(resource_, WL_EOM_OUTPUT_ATTRIBUTE, output_id, attribute, attribute_state, error);
+}
+
+static inline void
+wl_eom_send_output_set_window(struct wl_resource *resource_, uint32_t output_id, uint32_t error)
+{
+	wl_resource_post_event(resource_, WL_EOM_OUTPUT_SET_WINDOW, output_id, error);
 }
 
 #ifdef  __cplusplus
