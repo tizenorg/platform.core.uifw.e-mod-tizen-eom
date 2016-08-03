@@ -9,6 +9,12 @@
 
 #if 0
   #define DUMP_PRESENTATION
+  #define DUMP_NUM 30
+#endif
+
+#if 0
+  #define FRAMES
+  #include <time.h>
 #endif
 
 extern Eina_Bool eom_server_debug_on;
@@ -143,6 +149,18 @@ struct _E_Eom_Output
    int pp_buffer;
 
    tbm_surface_h dummy_buffer;
+
+#ifdef DUMP_PRESENTATION
+   Eina_Bool dump_do;
+   int dump_count;
+#endif
+#ifdef FRAMES
+   /* for testing purposes */
+   struct timeval prev;
+   struct timeval curr;
+
+   int num_frames;
+#endif
 };
 
 struct _E_Eom
@@ -261,7 +279,9 @@ static int _e_eom_util_get_stamp();
 #ifdef DRAW_DUMMY
 static void _e_eom_util_draw(tbm_surface_h surface);
 #endif
-
+#ifdef FRAMES
+static void _e_eom_util_check_frames(E_EomOutputPtr eom_output);
+#endif
 static void _e_eom_client_add_buffer(E_EomClientPtr client, E_EomClientBufferPtr buffer);
 static void _e_eom_client_free_buffers(E_EomClientPtr client);
 static E_EomClientBufferPtr _e_eom_client_get_buffer(E_EomClientPtr client);
