@@ -11,13 +11,13 @@
 #include "Ecore_Drm.h"
 #include <wayland-tbm-server.h>
 
+#ifdef FRAMES
+  #include <time.h>
+#endif
+
 E_API E_Module_Api e_modapi = { E_MODULE_API_VERSION, "EOM Module" };
 static E_EomPtr g_eom = NULL;
 Eina_Bool eom_server_debug_on = EINA_FALSE;
-
-#ifdef DUMP_PRESENTATION
-static int dump = 0;
-#endif
 
 static const struct wl_eom_interface _e_eom_wl_implementation =
 {
@@ -543,16 +543,17 @@ _e_eom_cb_commit(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUS
 #endif
 
 #ifdef DUMP_PRESENTATION
-        if (dump < 29)
-        {
-           tbm_surface_internal_dump_buffer(external_buffer, "kyky");
-           dump++;
-        }
-        else
-        {
-           tbm_surface_internal_dump_end();
-           EOM_DBG("dump end");
-        }
+        if (eom_output->dump_do)
+          {
+             tbm_surface_internal_dump_buffer(external_buffer, "eom_buffer");
+             eom_output->dump_count++;
+
+             if (eom_output->dump_count > DUMP_NUM)
+               {
+                  tbm_surface_internal_dump_end();
+                  eom_output->dump_do = EINA_FALSE;
+               }
+          }
 #endif
 
         err = tdm_layer_set_buffer(eom_output->layer, external_buffer);
@@ -563,6 +564,10 @@ _e_eom_cb_commit(tdm_output *output EINA_UNUSED, unsigned int sequence EINA_UNUS
 
         EOM_DBG("COMMIT <+++++++++++++++");
      }
+
+#ifdef FRAMES
+   _e_eom_util_check_frames(eom_output);
+#endif
 }
 
 static void
@@ -659,7 +664,13 @@ _e_eom_cb_tdm_output_status_change(tdm_output *output, tdm_output_change_type ty
         eom_output->status = plug;
         eom_output->name = eina_stringshare_add(new_name);
         eom_output->type = (eom_output_type_e)tdm_type;
+#ifdef DUMP_PRESENTATION
+        eom_output->dump_do = EINA_TRUE;
+        eom_output->dump_count = 1;
 
+        EOM_DBG("dump init");
+        tbm_surface_internal_dump_start("/eom_buffers", eom_output->width, eom_output->height, DUMP_NUM);
+#endif
         /* TODO: check output mode(presentation set) and HDMI type */
         _e_eom_output_start_mirror(eom_output);
 
@@ -729,7 +740,6 @@ _e_eom_cb_wl_request_set_attribute(struct wl_client *client, struct wl_resource 
    eom_error_e eom_error = EOM_ERROR_NONE;
    E_EomClientPtr eom_client = NULL, current_eom_client = NULL, iterator = NULL;
    E_EomOutputPtr eom_output = NULL;
-   Eina_Bool changes = EINA_FALSE;
    Eina_Bool ret = EINA_FALSE;
    Eina_List *l;
 
@@ -748,7 +758,6 @@ _e_eom_cb_wl_request_set_attribute(struct wl_client *client, struct wl_resource 
      {
         /* Current client can set any flag it wants */
         _e_eom_output_state_set_force_attribute(eom_output, attribute);
-        changes = EINA_TRUE;
      }
    else
      {
@@ -761,15 +770,6 @@ _e_eom_cb_wl_request_set_attribute(struct wl_client *client, struct wl_resource 
              eom_error = EOM_ERROR_INVALID_PARAMETER;
              goto end;
           }
-
-        changes = EINA_TRUE;
-     }
-
-   /* If there was no new changes applied do nothing */
-   if (changes == EINA_FALSE)
-     {
-        EOM_DBG("no new changes");
-        return;
      }
 
    EOM_DBG("set attribute OK");
@@ -1584,14 +1584,6 @@ _e_eom_util_create_client_buffer(E_EomClientPtr client, E_Comp_Wl_Buffer *wl_buf
    EOM_DBG("new client buffer wl:%p tbm:%p",
            buffer->wl_buffer, buffer->tbm_buffer);
 
-#ifdef DUMP_PRESENTATION
-   if (dump == 0)
-     {
-        EOM_DBG("dump start");
-        tbm_surface_internal_dump_start("/A", wl_buffer->w, wl_buffer->h, 30);
-     }
-#endif
-
 #if 0
    buffer->stamp = _e_eom_util_get_stamp();
 #endif
@@ -1778,6 +1770,36 @@ _e_eom_util_draw(tbm_surface_h surface)
      square_x = 0;
 
    tbm_bo_unmap(bo);
+}
+#endif
+#ifdef FRAMES
+static void _e_eom_util_check_frames(E_EomOutputPtr eom_output)
+{
+   int res = 0;
+   static int first = 1;
+
+   eom_output->num_frames += 1;
+   res = gettimeofday(&eom_output->curr, NULL);
+   if (res)
+     {
+        EOM_ERR("gettimeofday");
+        return;
+     }
+
+   if (eom_output->curr.tv_sec > eom_output->prev.tv_sec && !first)
+     {
+        EOM_DBG("FPS:%d", eom_output->num_frames);
+
+        eom_output->num_frames = 0;
+        eom_output->prev.tv_sec = eom_output->curr.tv_sec;
+        eom_output->prev.tv_usec = eom_output->curr.tv_usec;
+     }
+   else
+     {
+        eom_output->prev.tv_sec = eom_output->curr.tv_sec;
+        eom_output->prev.tv_usec = eom_output->curr.tv_usec;
+        first = 0;
+     }
 }
 #endif
 

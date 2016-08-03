@@ -9,6 +9,12 @@
 
 #if 0
   #define DUMP_PRESENTATION
+  #define DUMP_NUM 30
+#endif
+
+#if 0
+  #define FRAMES
+  #include <time.h>
 #endif
 
 extern Eina_Bool eom_server_debug_on;
@@ -58,29 +64,8 @@ if (statement)    \
 
 /* E Module */
 E_API extern E_Module_Api e_modapi;
-
-/**
- * @brief Called when Enlightenment is going to load the module
- * @param[in] m  structure which defines Enlightenment module
- * @see e_modapi_shutdown()
- * @see e_modapi_save()
- */
 E_API void *e_modapi_init(E_Module *m);
-
-/**
- * @brief Called when Enlightenment is going to unload the module
- * @param[in] m  structure which defines Enlightenment module
- * @see e_modapi_init()
- * @see e_modapi_save()
- */
 E_API int   e_modapi_shutdown(E_Module *m);
-
-/**
- * @brief Called when Enlightenment is going to save some info in the module
- * @param[in] m  structure which defines Enlightenment module
- * @see e_modapi_init()
- * @see e_modapi_shutdown()
- */
 E_API int   e_modapi_save(E_Module *m);
 
 #define NUM_MAIN_BUF 2
@@ -143,6 +128,18 @@ struct _E_Eom_Output
    int pp_buffer;
 
    tbm_surface_h dummy_buffer;
+
+#ifdef DUMP_PRESENTATION
+   Eina_Bool dump_do;
+   int dump_count;
+#endif
+#ifdef FRAMES
+   /* for testing purposes */
+   struct timeval prev;
+   struct timeval curr;
+
+   int num_frames;
+#endif
 };
 
 struct _E_Eom
@@ -261,7 +258,9 @@ static int _e_eom_util_get_stamp();
 #ifdef DRAW_DUMMY
 static void _e_eom_util_draw(tbm_surface_h surface);
 #endif
-
+#ifdef FRAMES
+static void _e_eom_util_check_frames(E_EomOutputPtr eom_output);
+#endif
 static void _e_eom_client_add_buffer(E_EomClientPtr client, E_EomClientBufferPtr buffer);
 static void _e_eom_client_free_buffers(E_EomClientPtr client);
 static E_EomClientBufferPtr _e_eom_client_get_buffer(E_EomClientPtr client);
